@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Astronaut Digital Twin | Mission Health Simulator</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#040c18;--panel:#071428;--panel2:#091830;--border:#152844;
+  --cyan:#00d4ff;--amber:#ffaa00;--green:#00e87a;--red:#ff4040;--purple:#aa88ff;
+  --text:#7aa8c8;--textbright:#c0daf0;--mono:'Courier New',monospace;
+  --border2:#1e3a60;
+}
+body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:11px;overflow-x:hidden}
+#app{display:flex;flex-direction:column;min-height:100vh;padding:8px;gap:8px;max-width:1280px;margin:0 auto}
+
+/* HEADER */
+#hdr{display:flex;align-items:center;justify-content:space-between;background:var(--panel);border:1px solid var(--border);padding:8px 16px;border-radius:3px}
+.hdr-title{font-size:15px;color:var(--cyan);letter-spacing:4px;font-weight:bold}
+.hdr-sub{font-size:8px;color:var(--text);letter-spacing:2px;margin-top:2px}
+#clock{font-size:22px;color:var(--cyan);letter-spacing:4px;font-variant-numeric:tabular-nums}
+#risk-badge{padding:5px 14px;border-radius:2px;font-size:12px;letter-spacing:3px;font-weight:bold;background:#001a08;color:var(--green);border:1px solid var(--green);transition:all .4s}
+#risk-badge.Y{background:#1a0e00;color:var(--amber);border-color:var(--amber)}
+#risk-badge.R{background:#1a0000;color:var(--red);border-color:var(--red);animation:pulse-red 1s infinite}
+@keyframes pulse-red{0%,100%{box-shadow:0 0 0 0 rgba(255,64,64,.4)}50%{box-shadow:0 0 0 6px rgba(255,64,64,0)}}
+
+/* MAIN GRID */
+#main-grid{display:grid;grid-template-columns:210px 1fr 190px;gap:8px}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:3px;padding:11px}
+.ptitle{font-size:9px;letter-spacing:3px;color:var(--cyan);border-bottom:1px solid var(--border);padding-bottom:7px;margin-bottom:10px}
+
+/* Controls */
+.crow{margin-bottom:9px}
+.clabel{display:flex;justify-content:space-between;color:var(--text);margin-bottom:3px;font-size:9px;letter-spacing:1px}
+.clabel span{color:var(--cyan)}
+input[type=range]{width:100%;height:2px;accent-color:var(--cyan);cursor:pointer}
+.btn{width:100%;padding:7px;margin-top:5px;background:transparent;border:1px solid var(--border2);color:var(--text);font-family:var(--mono);font-size:10px;letter-spacing:2px;cursor:pointer;border-radius:2px;transition:all .2s}
+.btn:hover:not(:disabled){border-color:var(--cyan);color:var(--cyan);background:rgba(0,212,255,.05)}
+.btn.primary{border-color:var(--cyan);color:var(--cyan)}
+.btn.primary:hover{background:rgba(0,212,255,.12)}
+.btn:disabled{opacity:.3;cursor:not-allowed}
+.srow{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(21,40,68,.6);font-size:9px}
+.sval{color:var(--cyan)}
+.sval.W{color:var(--amber)}.sval.R{color:var(--red)}.sval.G{color:var(--green)}
+
+/* API status bar */
+#api-bar{display:flex;align-items:center;gap:8px;padding:4px 8px;background:rgba(0,20,40,.6);border:1px solid var(--border);border-radius:2px;font-size:8px;letter-spacing:1px}
+#api-dot{width:6px;height:6px;border-radius:50%;background:var(--green);flex-shrink:0;transition:background .3s}
+#api-dot.err{background:var(--red)}#api-dot.busy{background:var(--amber);animation:pulse-amber .6s infinite}
+@keyframes pulse-amber{0%,100%{opacity:1}50%{opacity:.3}}
+#api-msg{color:var(--text);flex:1}
+#api-run-id{color:var(--cyan);font-size:7px;opacity:.7}
+#api-progress{height:2px;background:var(--border);border-radius:1px;overflow:hidden;width:120px;flex-shrink:0}
+#api-prog-fill{height:100%;background:var(--cyan);width:0%;transition:width .3s;border-radius:1px}
+
+/* 3D Twin panel */
+#panel-twin{display:flex;flex-direction:column;align-items:center;padding:8px;gap:6px}
+#three-canvas{display:block;border:1px solid var(--border);border-radius:3px}
+#phase-disp{font-size:9px;letter-spacing:4px;color:var(--amber);min-height:14px;text-align:center}
+#vitals{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:5px;width:100%}
+.vcard{background:rgba(0,212,255,.04);border:1px solid var(--border);border-radius:3px;padding:5px;text-align:center}
+.vlabel{font-size:7px;letter-spacing:2px;color:var(--text);margin-bottom:2px}
+.vval{font-size:17px;font-weight:bold;color:var(--cyan);line-height:1}
+.vval.W{color:var(--amber)}.vval.R{color:var(--red)}
+.vunit{font-size:7px;color:var(--text);margin-top:2px}
+
+/* Event log */
+.elog{font-size:9px;max-height:130px;overflow-y:auto}
+.eitem{padding:3px 0;border-bottom:1px solid rgba(21,40,68,.4);color:var(--text)}
+.eitem.S{color:var(--amber)}.eitem.D{color:var(--purple)}.eitem.C{color:var(--red)}
+
+/* CHARTS */
+#charts-row{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.cpanel{background:var(--panel);border:1px solid var(--border);border-radius:3px;padding:8px}
+.ctitle{font-size:8px;letter-spacing:2px;color:var(--cyan);margin-bottom:5px;text-align:center}
+.cwrap{position:relative;height:115px}
+
+/* TIMELINE */
+#tl-section{background:var(--panel);border:1px solid var(--border);border-radius:3px;padding:10px}
+#tl-track{display:flex;gap:4px;margin-top:8px;position:relative;overflow-x:auto;padding-bottom:4px}
+.dayblk{flex:0 0 auto;min-width:70px;border:1px solid var(--border);border-radius:3px;padding:5px 3px;transition:border-color .3s,background .3s}
+.dayblk.active{border-color:var(--cyan);background:rgba(0,212,255,.04)}
+.dayblk.done{border-color:rgba(0,232,122,.3)}
+.dlabel{font-size:8px;color:var(--text);text-align:center;margin-bottom:3px;letter-spacing:1px}
+.dpills{display:flex;flex-wrap:wrap;gap:2px;justify-content:center;min-height:16px}
+.pill{padding:1px 4px;border-radius:2px;font-size:7px;letter-spacing:1px}
+.pw{background:rgba(0,212,255,.08);color:var(--cyan);border:1px solid rgba(0,212,255,.25)}
+.ps{background:rgba(255,170,0,.08);color:var(--amber);border:1px solid rgba(255,170,0,.25)}
+.pd{background:rgba(170,136,255,.08);color:var(--purple);border:1px solid rgba(170,136,255,.25)}
+.psl{background:rgba(0,232,122,.06);color:var(--green);border:1px solid rgba(0,232,122,.2)}
+.fbar{margin-top:4px;height:3px;background:var(--border);border-radius:1px;overflow:hidden}
+.ffill{height:100%;border-radius:1px;transition:width .5s,background .5s}
+
+/* MC SECTION */
+#mc-section{display:none;background:var(--panel);border:1px solid var(--border);border-radius:3px;padding:11px}
+#mc-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+.mc-cwrap{position:relative;height:150px}
+#mc-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:10px}
+.mcstat{background:rgba(0,212,255,.04);border:1px solid var(--border);border-radius:3px;padding:8px;text-align:center}
+.mcslabel{font-size:8px;color:var(--text);letter-spacing:1px}
+.mcsval{font-size:20px;font-weight:bold;color:var(--cyan);margin-top:4px}
+.mcsval.W{color:var(--amber)}.mcsval.R{color:var(--red)}
+
+/* REPORT */
+#report-section{display:none;background:var(--panel);border:1px solid var(--border);border-radius:3px;padding:11px}
+#rtable{width:100%;border-collapse:collapse;margin-top:8px;font-size:11px}
+#rtable td{padding:6px 10px;border-bottom:1px solid var(--border)}
+#rtable td:last-child{text-align:right;color:var(--cyan)}
+#rtable tr.W td:last-child{color:var(--amber)}
+#rtable tr.R td:last-child{color:var(--red)}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:var(--panel)}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- HEADER -->
+<div id="hdr">
+  <div>
+    <div class="hdr-title">◈ ASTRONAUT DIGITAL TWIN</div>
+    <div class="hdr-sub">MISSION HEALTH MONITORING · BIOGEARS + PROBABILISTIC SIM · v2.0</div>
+  </div>
+  <div id="clock">T+00:00:00</div>
+  <div id="risk-badge">NOMINAL</div>
+</div>
+
+<!-- API STATUS BAR -->
+<div id="api-bar">
+  <div id="api-dot"></div>
+  <div id="api-msg">API ready — configure and run simulation</div>
+  <div id="api-run-id"></div>
+  <div id="api-progress"><div id="api-prog-fill"></div></div>
+</div>
+
+<!-- MAIN GRID -->
+<div id="main-grid">
+
+  <!-- CONTROLS -->
+  <div class="panel" id="panel-ctrl">
+    <div class="ptitle">MISSION CONTROL</div>
+    <div class="crow"><div class="clabel">MISSION DURATION <span id="lbl-cyc">30 days</span></div><input type="range" id="ctrl-cyc" min="1" max="90" value="30" step="1"></div>
+    <div class="crow"><div class="clabel">BASELINE HR <span id="lbl-hr">75 bpm</span></div><input type="range" id="ctrl-hr" min="55" max="100" value="75"></div>
+    <div class="crow"><div class="clabel">SLEEP QUALITY <span id="lbl-sq">0.80</span></div><input type="range" id="ctrl-sq" min="1" max="10" value="8"></div>
+    <div class="crow"><div class="clabel">INIT FATIGUE <span id="lbl-fat">0.0</span></div><input type="range" id="ctrl-fat" min="0" max="10" value="0"></div>
+    <div class="crow"><div class="clabel">PLAYBACK SPEED <span id="lbl-spd">1.0×</span></div><input type="range" id="ctrl-spd" min="1" max="8" value="3"></div>
+
+    <button class="btn primary" id="btn-run" onclick="startSimulation()">◈ RUN SIMULATION</button>
+    <button class="btn" id="btn-play" onclick="startPlay()" disabled>▶ PLAY RESULTS</button>
+    <button class="btn" id="btn-pause" onclick="togglePause()" disabled>⏸ PAUSE</button>
+    <button class="btn" id="btn-reset" onclick="resetPlay()" disabled>⏮ RESET</button>
+
+    <div style="margin-top:12px;padding-top:9px;border-top:1px solid var(--border)">
+      <div class="ptitle" style="margin:0 0 8px">BIOGEARS ENGINE</div>
+      <div class="srow"><span>MODE</span><span class="sval" id="bg-mode">—</span></div>
+      <div class="srow"><span>STATUS</span><span class="sval G" id="bg-status">CONNECTING</span></div>
+      <div class="srow"><span>SIGNALS</span><span class="sval">HR·MAP·SpO₂</span></div>
+      <div class="srow"><span>RUN ID</span><span class="sval" id="bg-cyc" style="font-size:8px;word-break:break-all">—</span></div>
+    </div>
+  </div>
+
+  <!-- 3D TWIN -->
+  <div class="panel" id="panel-twin">
+    <div class="ptitle" style="text-align:center">3D ASTRONAUT DIGITAL TWIN</div>
+    <canvas id="three-canvas"></canvas>
+    <div id="phase-disp">◈ AWAITING MISSION INITIALIZATION</div>
+    <div id="vitals">
+      <div class="vcard"><div class="vlabel">HEART RATE</div><div class="vval" id="v-hr">—</div><div class="vunit">bpm</div></div>
+      <div class="vcard"><div class="vlabel">FATIGUE</div><div class="vval" id="v-fat">—</div><div class="vunit">index</div></div>
+      <div class="vcard"><div class="vlabel">STRESS</div><div class="vval" id="v-str">—</div><div class="vunit">level</div></div>
+      <div class="vcard"><div class="vlabel">SpO₂</div><div class="vval" id="v-spo2">—</div><div class="vunit">%</div></div>
+    </div>
+  </div>
+
+  <!-- STATUS -->
+  <div class="panel">
+    <div class="ptitle">MISSION STATUS</div>
+    <div id="cyc-disp" style="font-size:14px;color:var(--cyan);letter-spacing:2px;margin-bottom:5px">STEP: — / —</div>
+    <div id="phase-name" style="font-size:8px;letter-spacing:3px;color:var(--amber);margin-bottom:10px">STANDBY</div>
+    <div class="srow"><span>PEAK FATIGUE</span><span class="sval" id="st-pf">—</span></div>
+    <div class="srow"><span>SMS EVENTS</span><span class="sval" id="st-sms">0</span></div>
+    <div class="srow"><span>DISRUPTIONS</span><span class="sval" id="st-dis">0</span></div>
+    <div class="srow"><span>AVG SLEEP Q.</span><span class="sval" id="st-sq">—</span></div>
+    <div class="srow"><span>MEAN HR</span><span class="sval" id="st-hr">—</span></div>
+    <div class="ptitle" style="margin-top:10px">EVENT LOG</div>
+    <div id="elog" class="elog"><div class="eitem" style="color:rgba(120,168,200,.3)">No events recorded</div></div>
+  </div>
+
+</div><!-- end main-grid -->
+
+<!-- CHARTS -->
+<div id="charts-row">
+  <div class="cpanel"><div class="ctitle">FATIGUE INDEX</div><div class="cwrap"><canvas id="ch-fat"></canvas></div></div>
+  <div class="cpanel"><div class="ctitle">HEART RATE · BIOGEARS OUTPUT</div><div class="cwrap"><canvas id="ch-hr"></canvas></div></div>
+  <div class="cpanel"><div class="ctitle">SLEEP QUALITY</div><div class="cwrap"><canvas id="ch-slp"></canvas></div></div>
+  <div class="cpanel"><div class="ctitle">COMPOSITE RISK SCORE</div><div class="cwrap"><canvas id="ch-rsk"></canvas></div></div>
+</div>
+
+<!-- TIMELINE -->
+<div id="tl-section" class="panel">
+  <div class="ptitle">MISSION TIMELINE · <span id="tl-meta" style="color:var(--text);font-size:8px">awaiting simulation</span></div>
+  <div id="tl-track"></div>
+</div>
+
+<!-- MONTE CARLO -->
+<div id="mc-section">
+  <div class="ptitle" style="padding:11px 11px 0">◈ SIMULATION RISK ANALYTICS</div>
+  <div id="mc-grid">
+    <div><div class="ctitle">FATIGUE TRAJECTORY</div><div class="mc-cwrap"><canvas id="ch-mc-t"></canvas></div></div>
+    <div><div class="ctitle">SLEEP QUALITY TRAJECTORY</div><div class="mc-cwrap"><canvas id="ch-mc-h"></canvas></div></div>
+  </div>
+  <div id="mc-stats"></div>
+</div>
+
+<!-- MISSION REPORT -->
+<div id="report-section">
+  <div class="ptitle" style="padding:11px 11px 0">◈ POST-MISSION HEALTH REPORT</div>
+  <table id="rtable"></table>
+</div>
+
+</div><!-- end app -->
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+
+// ════════════════════════════════════════════════════════
+// CONFIG
+// ════════════════════════════════════════════════════════
+const API_BASE = 'http://127.0.0.1:8000';
+
+// ════════════════════════════════════════════════════════
+// API LAYER
+// ════════════════════════════════════════════════════════
+
+function setApiStatus(state, msg, progress=null, runId=null) {
+  const dot = document.getElementById('api-dot');
+  const msgEl = document.getElementById('api-msg');
+  const fill = document.getElementById('api-prog-fill');
+  const ridEl = document.getElementById('api-run-id');
+  dot.className = state; // '', 'err', 'busy'
+  msgEl.textContent = msg;
+  if (progress !== null) fill.style.width = progress + '%';
+  if (runId) ridEl.textContent = runId;
+}
+
+async function apiPost(path, body) {
+  const r = await fetch(API_BASE + path, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
+  if (!r.ok) throw new Error(`POST ${path} → ${r.status}`);
+  return r.json();
+}
+
+async function apiGet(path) {
+  const r = await fetch(API_BASE + path);
+  if (!r.ok) throw new Error(`GET ${path} → ${r.status}`);
+  return r.json();
+}
+
+async function pollUntilComplete(runId, onProgress) {
+  while (true) {
+    const s = await apiGet(`/api/simulation/status/${runId}`);
+    onProgress(s.progress || 0, s.status);
+    if (s.status === 'completed') return s;
+    if (s.status === 'failed') throw new Error('Simulation failed: ' + (s.error_message || 'unknown'));
+    await new Promise(r => setTimeout(r, 800));
+  }
+}
+
+// ════════════════════════════════════════════════════════
+// SIMULATION LIFECYCLE
+// ════════════════════════════════════════════════════════
+
+let currentRunId = null;
+let simResults = null;   // full results from /api/data/results/{id}
+let simSummary = null;   // from /api/data/results/{id}/summary
+let simEvents  = null;   // from /api/data/results/{id}/events
+
+async function startSimulation() {
+  const btn = document.getElementById('btn-run');
+  btn.disabled = true;
+  btn.textContent = '◈ SUBMITTING...';
+  setApiStatus('busy', 'Submitting simulation to server...', 0);
+
+  const cfg = {
+    mission_duration_hours: +document.getElementById('ctrl-cyc').value * 24,
+    time_step_minutes: 30,
+    baseline_hr: +document.getElementById('ctrl-hr').value,
+    baseline_sleep_quality: +document.getElementById('ctrl-sq').value / 10,
+    initial_fatigue: +document.getElementById('ctrl-fat').value / 10,
+    enable_motion_sickness: true,
+    enable_sleep_disruption: true,
+    use_biogears: false,
+    save_trajectories: true,
+    save_events: true,
+  };
+
+  try {
+    const resp = await apiPost('/api/simulation/run', cfg);
+    currentRunId = resp.run_id;
+    document.getElementById('bg-cyc').textContent = currentRunId;
+    document.getElementById('api-run-id').textContent = currentRunId;
+    setApiStatus('busy', `Simulation running: ${currentRunId}`, 0, currentRunId);
+    btn.textContent = '◈ RUNNING...';
+
+    await pollUntilComplete(currentRunId, (pct, status) => {
+      setApiStatus('busy', `[${status.toUpperCase()}] ${pct.toFixed(0)}% complete`, pct, currentRunId);
+      document.getElementById('api-prog-fill').style.width = pct + '%';
+    });
+
+    setApiStatus('busy', 'Fetching results...', 99, currentRunId);
+    await fetchAllResults(currentRunId);
+
+    setApiStatus('', `Results loaded — ${simResults.state.time.length} timesteps`, 100, currentRunId);
+    btn.textContent = '◈ RUN SIMULATION';
+    btn.disabled = false;
+
+    document.getElementById('btn-play').disabled  = false;
+    document.getElementById('btn-reset').disabled = false;
+
+    buildTimeline();
+    populateStatusPanel();
+    checkHealth();
+
+  } catch(e) {
+    setApiStatus('err', 'Error: ' + e.message, 0);
+    btn.textContent = '◈ RUN SIMULATION';
+    btn.disabled = false;
+    console.error(e);
+  }
+}
+
+async function fetchAllResults(runId) {
+  const [results, summary, events] = await Promise.all([
+    apiGet(`/api/data/results/${runId}`),
+    apiGet(`/api/data/results/${runId}/summary`),
+    apiGet(`/api/data/results/${runId}/events`),
+  ]);
+  simResults = results;
+  simSummary = summary;
+  simEvents  = events.events || [];
+}
+
+async function checkHealth() {
+  try {
+    const h = await apiGet('/api/health/');
+    document.getElementById('bg-status').textContent = 'ONLINE';
+    document.getElementById('bg-status').className = 'sval G';
+    document.getElementById('bg-mode').textContent = 'REST API';
+  } catch(e) {
+    document.getElementById('bg-status').textContent = 'OFFLINE';
+    document.getElementById('bg-status').className = 'sval R';
+  }
+}
+
+// ════════════════════════════════════════════════════════
+// TIMELINE — built from /events endpoint
+// ════════════════════════════════════════════════════════
+
+function buildTimeline() {
+  if (!simResults) return;
+  const state  = simResults.state;
+  const events = simEvents;
+  const times  = state.time;
+  const fat    = state.fatigue;
+  const totalH = times[times.length - 1];
+  const nDays  = Math.ceil(totalH / 24);
+
+  document.getElementById('tl-meta').textContent =
+    `${nDays} days · ${times.length} timesteps · ${events.length} events`;
+
+  const track = document.getElementById('tl-track');
+  track.innerHTML = '';
+
+  for (let d = 0; d < nDays; d++) {
+    const dStart = d * 24, dEnd = (d+1) * 24;
+    // Average fatigue for this day
+    const indices = times.map((t,i) => t >= dStart && t < dEnd ? i : -1).filter(i => i >= 0);
+    const avgFat = indices.length ? indices.reduce((s,i) => s + fat[i], 0) / indices.length : 0;
+
+    const dayEvents = events.filter(e => {
+      const t = e.simulation_time || e.start_time || 0;
+      return t >= dStart && t < dEnd;
+    });
+    const hasSms = dayEvents.some(e => e.type && e.type.toLowerCase().includes('motion'));
+    const hasDis = dayEvents.some(e => e.type && e.type.toLowerCase().includes('sleep'));
+
+    const blk = document.createElement('div');
+    blk.className = 'dayblk';
+    blk.id = `tlblk-${d}`;
+    const pills = [
+      '<span class="pill pw">WORK</span>',
+      hasSms ? '<span class="pill ps">SMS</span>' : '',
+      hasDis ? '<span class="pill pd">DISRPT</span>' : '',
+      '<span class="pill psl">SLEEP</span>',
+    ].join('');
+    const fatW = (avgFat * 100).toFixed(0);
+    const fatC = avgFat < .4 ? '#00e87a' : avgFat < .7 ? '#ffaa00' : '#ff4040';
+    blk.innerHTML = `<div class="dlabel">DAY ${d+1}</div><div class="dpills">${pills}</div><div class="fbar"><div class="ffill" style="width:${fatW}%;background:${fatC}"></div></div>`;
+    track.appendChild(blk);
+  }
+}
+
+function tlActivate(idx) {
+  document.querySelectorAll('.dayblk').forEach((b,i) => {
+    b.className = 'dayblk' + (i===idx ? ' active' : i<idx ? ' done' : '');
+  });
+}
+
+// ════════════════════════════════════════════════════════
+// STATUS PANEL — from /summary endpoint
+// ════════════════════════════════════════════════════════
+
+function populateStatusPanel() {
+  if (!simSummary) return;
+  const m = simSummary.metrics;
+  const ra = simSummary.risk_assessment;
+
+  document.getElementById('st-pf').textContent  = m.fatigue.peak.toFixed(3);
+  document.getElementById('st-sms').textContent = m.motion_sickness.episodes;
+  document.getElementById('st-dis').textContent = '—'; // not always in summary
+  document.getElementById('st-sq').textContent  = m.sleep_quality.mean.toFixed(2);
+  document.getElementById('st-hr').textContent  = m.heart_rate.mean.toFixed(0) + ' bpm';
+
+  // Populate event log from /events
+  const elog = document.getElementById('elog');
+  elog.innerHTML = '';
+  if (!simEvents.length) {
+    elog.innerHTML = '<div class="eitem" style="color:rgba(120,168,200,.3)">No events recorded</div>';
+    return;
+  }
+  simEvents.slice(0, 10).forEach(e => {
+    const isSms = e.type && e.type.toLowerCase().includes('motion');
+    const isDis = e.type && e.type.toLowerCase().includes('sleep');
+    const cls   = isSms ? 'S' : isDis ? 'D' : '';
+    const t     = (e.simulation_time || 0).toFixed(1);
+    const sev   = e.severity ? ` sev=${(+e.severity).toFixed(2)}` : '';
+    const el    = document.createElement('div');
+    el.className = `eitem ${cls}`;
+    el.textContent = `[T+${t}h] ${e.type || 'EVENT'}${sev}`;
+    elog.appendChild(el);
+  });
+}
+
+// ════════════════════════════════════════════════════════
+// THREE.JS ASTRONAUT (unchanged)
+// ════════════════════════════════════════════════════════
+
+let renderer3, scene3, cam3, astronaut, bodyMesh, bodyMat, headMesh, headMat, visorMat, riskRing, riskRingMat, aimb;
+let threeOK = false;
+
+function initThree() {
+  const cv = document.getElementById('three-canvas');
+  const tw = document.getElementById('panel-twin');
+  const W = Math.min(tw.clientWidth - 22, 520);
+  const H = Math.round(W * 0.62);
+  cv.width = W; cv.height = H;
+
+  renderer3 = new THREE.WebGLRenderer({canvas:cv, antialias:true});
+  renderer3.setSize(W, H);
+  renderer3.setClearColor(0x040c18, 1);
+
+  scene3 = new THREE.Scene();
+  cam3 = new THREE.PerspectiveCamera(42, W/H, .1, 500);
+  cam3.position.set(0, 2, 7.5);
+  cam3.lookAt(0, 1.8, 0);
+
+  aimb = new THREE.AmbientLight(0x223355, 1.0);
+  scene3.add(aimb);
+  const sun = new THREE.DirectionalLight(0x8ab8ff, 1.3);
+  sun.position.set(4, 6, 4);
+  scene3.add(sun);
+  const rim = new THREE.DirectionalLight(0x004466, .5);
+  rim.position.set(-3, 1, -3);
+  scene3.add(rim);
+
+  const sg = new THREE.BufferGeometry();
+  const sp = new Float32Array(900*3);
+  for(let i=0;i<900;i++){sp[i*3]=(Math.random()-.5)*300;sp[i*3+1]=(Math.random()-.5)*300;sp[i*3+2]=(Math.random()-.5)*300;}
+  sg.setAttribute('position', new THREE.BufferAttribute(sp,3));
+  scene3.add(new THREE.Points(sg, new THREE.PointsMaterial({color:0x99bbdd,size:.35})));
+
+  const em = new THREE.MeshPhongMaterial({color:0x1133aa,emissive:0x001133,specular:0x0a2255,shininess:25});
+  const earth = new THREE.Mesh(new THREE.SphereGeometry(9,32,32), em);
+  earth.position.set(-14,-7,-25);
+  scene3.add(earth);
+
+  astronaut = new THREE.Group();
+  bodyMat  = new THREE.MeshPhongMaterial({color:0xcccccc,shininess:35});
+  headMat  = new THREE.MeshPhongMaterial({color:0xeeeeee,shininess:80});
+  visorMat = new THREE.MeshPhongMaterial({color:0x3366cc,transparent:true,opacity:.75,shininess:120});
+  const greyM  = () => new THREE.MeshPhongMaterial({color:0xb8b8b8,shininess:20});
+  const darkM  = () => new THREE.MeshPhongMaterial({color:0x888888,shininess:10});
+
+  headMesh = new THREE.Mesh(new THREE.SphereGeometry(.48,20,20), headMat);
+  headMesh.position.y = 3.15;
+  const hring = new THREE.Mesh(new THREE.TorusGeometry(.54,.055,8,32), darkM());
+  hring.position.y = 3.15; hring.rotation.x = Math.PI/2;
+  const vis = new THREE.Mesh(new THREE.SphereGeometry(.30,16,16), visorMat);
+  vis.position.set(0,3.15,.35); vis.scale.x=1.25;
+
+  bodyMesh = new THREE.Mesh(new THREE.CylinderGeometry(.52,.46,1.65,16), bodyMat);
+  bodyMesh.position.y = 2.02;
+  const chest = new THREE.Mesh(new THREE.BoxGeometry(.3,.5,.1), darkM());
+  chest.position.set(0,2.1,.54);
+  const bp = new THREE.Mesh(new THREE.BoxGeometry(.55,.7,.18), greyM());
+  bp.position.set(0,2.0,-.64);
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(.22,.24,.28,12), greyM());
+  neck.position.y = 2.9;
+  const sp2 = new THREE.Mesh(new THREE.SphereGeometry(.2,10,10), greyM());
+  const spL = sp2.clone(); spL.position.set(-.68,2.7,0);
+  const spR = sp2.clone(); spR.position.set(.68,2.7,0);
+
+  const mkArm = (side) => {
+    const g = new THREE.Group();
+    const ua = new THREE.Mesh(new THREE.CylinderGeometry(.135,.12,.72,10), bodyMat.clone());
+    ua.position.y = -.36;
+    const fa = new THREE.Mesh(new THREE.CylinderGeometry(.11,.10,.62,10), bodyMat.clone());
+    fa.position.y = -1.0;
+    const glove = new THREE.Mesh(new THREE.SphereGeometry(.135,10,10), greyM());
+    glove.position.y = -1.37;
+    g.add(ua,fa,glove);
+    g.position.set(side*.68, 2.62, 0);
+    g.rotation.z = -side*.28;
+    return g;
+  };
+  const mkLeg = (side) => {
+    const g = new THREE.Group();
+    const th = new THREE.Mesh(new THREE.CylinderGeometry(.17,.15,.82,10), bodyMat.clone());
+    th.position.y = -.41;
+    const sh = new THREE.Mesh(new THREE.CylinderGeometry(.14,.12,.72,10), bodyMat.clone());
+    sh.position.y = -1.18;
+    const bt = new THREE.Mesh(new THREE.BoxGeometry(.24,.15,.32), darkM());
+    bt.position.set(0,-1.62,.05);
+    g.add(th,sh,bt);
+    g.position.set(side*.26, 1.2, 0);
+    return g;
+  };
+  astronaut.add(headMesh,hring,vis,neck,bodyMesh,chest,bp,spL,spR,mkArm(-1),mkArm(1),mkLeg(-1),mkLeg(1));
+  scene3.add(astronaut);
+
+  riskRingMat = new THREE.MeshBasicMaterial({color:0x00e87a,transparent:true,opacity:.55});
+  riskRing = new THREE.Mesh(new THREE.TorusGeometry(1.3,.04,8,80), riskRingMat);
+  riskRing.position.y = 1.6;
+  scene3.add(riskRing);
+
+  scene3.add(new THREE.GridHelper(8,8,0x152844,0x0d1e38));
+
+  threeOK = true;
+  loopThree();
+}
+
+let _t3last = 0, _simState = null;
+function loopThree(ts=0) {
+  requestAnimationFrame(loopThree);
+  if(!threeOK) return;
+  const dt = Math.min((ts - _t3last)/1000, .05);
+  _t3last = ts;
+  const t = ts * .001;
+  scene3.rotation.y += .003;
+  if (!_simState) { renderer3.render(scene3,cam3); return; }
+  const { fatigue, hr, smsSev, stress, risk, phase } = _simState;
+  if (phase === 'SLEEP') {
+    astronaut.rotation.x += ((-Math.PI/2.2) - astronaut.rotation.x) * .04;
+    astronaut.position.y += (-.8 - astronaut.position.y) * .04;
+    aimb.intensity += (.2 - aimb.intensity) * .03;
+  } else {
+    astronaut.rotation.x += (0 - astronaut.rotation.x) * .04;
+    astronaut.position.y += (0 - astronaut.position.y) * .04;
+    aimb.intensity += (.9 - aimb.intensity) * .03;
+  }
+  const swaySpeed = 1.2 - fatigue*.8;
+  astronaut.rotation.z = Math.sin(t * swaySpeed) * (fatigue * .06 + .01);
+  if (smsSev > .1) {
+    astronaut.rotation.z += Math.sin(t * 4.5) * smsSev * .09;
+    astronaut.position.x = Math.sin(t * 3.8) * smsSev * .06;
+  } else { astronaut.position.x *= .95; }
+  const hrRad = (hr/60) * 2 * Math.PI;
+  const pulse = 1 + Math.sin(t * hrRad) * .015;
+  bodyMesh.scale.x = pulse; bodyMesh.scale.z = pulse;
+  const sc = new THREE.Color();
+  if (stress < .5) sc.lerpColors(new THREE.Color(0xcccccc), new THREE.Color(0xffaa44), stress*2);
+  else sc.lerpColors(new THREE.Color(0xffaa44), new THREE.Color(0xff3333), (stress-.5)*2);
+  bodyMat.color.copy(sc);
+  const rc = risk < .4 ? new THREE.Color(0x00e87a) : risk < .7 ? new THREE.Color(0xffaa00) : new THREE.Color(0xff4040);
+  riskRingMat.color.lerp(rc, .08);
+  riskRing.rotation.y = t * .8;
+  renderer3.render(scene3, cam3);
+}
+
+// ════════════════════════════════════════════════════════
+// CHARTS
+// ════════════════════════════════════════════════════════
+
+let charts = {};
+const CYAN='#00d4ff', AMBER='#ffaa00', GREEN='#00e87a', RED='#ff4040';
+
+const baseOpts = (yMin, yMax, color) => ({
+  type:'line',
+  data:{labels:[],datasets:[{data:[],borderColor:color,borderWidth:1.5,pointRadius:1.5,pointBackgroundColor:color,tension:.4,fill:true,backgroundColor:color+'18'}]},
+  options:{
+    responsive:true, maintainAspectRatio:false, animation:{duration:200},
+    plugins:{legend:{display:false}},
+    scales:{
+      x:{ticks:{color:'#7aa8c8',font:{size:9,family:'Courier New'},maxTicksLimit:8},grid:{color:'#152844',lineWidth:.5},border:{color:'#152844'}},
+      y:{min:yMin,max:yMax,ticks:{color:'#7aa8c8',font:{size:9,family:'Courier New'},maxTicksLimit:5},grid:{color:'#152844',lineWidth:.5},border:{color:'#152844'}}
+    }
+  }
+});
+
+function initCharts() {
+  if(charts.fat) { Object.values(charts).forEach(c=>c.destroy()); charts={}; }
+  charts.fat = new Chart(document.getElementById('ch-fat'),  baseOpts(0, 10,   CYAN));
+  charts.hr  = new Chart(document.getElementById('ch-hr'),   baseOpts(40,160,  AMBER));
+  charts.slp = new Chart(document.getElementById('ch-slp'),  baseOpts(0, 1,    GREEN));
+  charts.rsk = new Chart(document.getElementById('ch-rsk'),  baseOpts(0, 1,    RED));
+}
+
+function pushChart(key, label, value) {
+  const ds = charts[key].data;
+  ds.labels.push(label);
+  ds.datasets[0].data.push(+value);
+  if(ds.labels.length > 30) { ds.labels.shift(); ds.datasets[0].data.shift(); }
+  charts[key].update('none');
+}
+
+// ════════════════════════════════════════════════════════
+// PLAYBACK ENGINE — replays API result data
+// ════════════════════════════════════════════════════════
+
+let playState = { running:false, paused:false, idx:0, lastTs:0 };
+let missionSecs = 0;
+
+function startPlay() {
+  if (!simResults) return;
+  initCharts();
+  playState = { running:true, paused:false, idx:0, lastTs:performance.now() };
+  missionSecs = 0;
+  document.getElementById('btn-play').disabled  = true;
+  document.getElementById('btn-pause').disabled = false;
+  requestAnimationFrame(playLoop);
+}
+
+function togglePause() {
+  playState.paused = !playState.paused;
+  const btn = document.getElementById('btn-pause');
+  btn.textContent = playState.paused ? '▶ RESUME' : '⏸ PAUSE';
+  if (!playState.paused) { playState.lastTs = performance.now(); requestAnimationFrame(playLoop); }
+}
+
+function resetPlay() {
+  playState.running = false; playState.paused = false;
+  initCharts();
+  document.getElementById('btn-play').disabled  = false;
+  document.getElementById('btn-pause').disabled = true;
+  document.getElementById('btn-pause').textContent = '⏸ PAUSE';
+  document.getElementById('clock').textContent = 'T+00:00:00';
+  document.getElementById('cyc-disp').textContent = 'STEP: 0 / —';
+  document.getElementById('phase-name').textContent = 'RESET';
+  document.getElementById('phase-disp').textContent = '◈ SIMULATION READY';
+  document.getElementById('risk-badge').textContent = 'NOMINAL';
+  document.getElementById('risk-badge').className = '';
+  setVital('hr','—',''); setVital('fat','—',''); setVital('str','—',''); setVital('spo2','—','');
+  _simState = null;
+  if (simResults) buildTimeline();
+}
+
+function getPhaseFromTime(timeH) {
+  const h = timeH % 24;
+  if (h < 8)  return 'WORK';
+  if (h < 10) return 'EVENT';
+  if (h < 16) return 'ACTIVE';
+  return 'SLEEP';
+}
+
+function playLoop(ts) {
+  if (!playState.running || playState.paused) return;
+  const speed = +document.getElementById('ctrl-spd').value / 3;
+  const dt = Math.min((ts - playState.lastTs)/1000, .1) * speed;
+  playState.lastTs = ts;
+
+  // Advance one or more data indices per frame based on speed
+  const stepsPerSec = Math.max(1, Math.round(speed * 1));
+  playState.idx = Math.min(playState.idx + stepsPerSec, simResults.state.time.length - 1);
+
+  const state  = simResults.state;
+  const idx    = playState.idx;
+  const total  = state.time.length;
+  const timeH  = state.time[idx];
+
+  // Mission clock
+  missionSecs += dt * 3600; // simulate time passing
+  const ms = Math.floor(timeH * 3600);
+  document.getElementById('clock').textContent =
+    `T+${String(Math.floor(ms/3600)).padStart(2,'0')}:${String(Math.floor((ms%3600)/60)).padStart(2,'0')}:${String(ms%60).padStart(2,'0')}`;
+
+  const fat  = state.fatigue[idx];
+  const hr   = Math.round(state.hr[idx]);
+  const slp  = state.sleep_quality[idx];
+  const str  = state.stress ? state.stress[idx] : 0;
+  const spo2 = state.spo2 ? state.spo2[idx] : 98;
+  const phase = getPhaseFromTime(timeH);
+
+  // Composite risk (normalised)
+  const rsk = Math.min(1, (fat/10)*0.5 + (str||0)*0.3 + Math.max(0, (1-slp))*0.2);
+
+  // 3D state
+  _simState = { fatigue: fat/10, hr, smsSev: 0, stress: str||0, risk: rsk, phase };
+
+  // Display
+  document.getElementById('cyc-disp').textContent = `STEP: ${idx+1} / ${total}`;
+  document.getElementById('phase-name').textContent = phase;
+
+  const phaseLabels = {
+    'WORK':   '◈ WORK PHASE — ASTRONAUT ACTIVE',
+    'EVENT':  '◈ EVENT WINDOW',
+    'ACTIVE': '◈ ACTIVE PHASE',
+    'SLEEP':  '◈ SLEEP & RECOVERY PHASE',
+  };
+  document.getElementById('phase-disp').textContent = phaseLabels[phase] || '';
+
+  // Vitals
+  const fatClass = fat > 7 ? 'R' : fat > 5 ? 'W' : '';
+  const hrClass  = hr > 100 ? 'W' : hr > 115 ? 'R' : '';
+  const spo2C    = spo2 < 94 ? 'R' : spo2 < 97 ? 'W' : '';
+  setVital('hr',   hr,              hrClass);
+  setVital('fat',  fat.toFixed(2),  fatClass);
+  setVital('str',  (str||0).toFixed(2), (str||0) > .6 ? 'W' : '');
+  setVital('spo2', (+spo2).toFixed(1), spo2C);
+
+  // Risk badge
+  const rb = document.getElementById('risk-badge');
+  if (rsk >= .7)      { rb.textContent='CRITICAL'; rb.className='R'; }
+  else if (rsk >= .4) { rb.textContent='ELEVATED'; rb.className='Y'; }
+  else                { rb.textContent='NOMINAL';  rb.className=''; }
+
+  // Charts — push every 4 steps
+  if (idx % 4 === 0) {
+    const lbl = `${timeH.toFixed(0)}h`;
+    pushChart('fat', lbl, fat);
+    pushChart('hr',  lbl, hr);
+    pushChart('slp', lbl, slp);
+    pushChart('rsk', lbl, rsk);
+  }
+
+  // Timeline day pointer
+  tlActivate(Math.floor(timeH / 24));
+
+  if (playState.idx >= total - 1) {
+    endMission();
+    return;
+  }
+  requestAnimationFrame(playLoop);
+}
+
+function setVital(id, val, cls) {
+  const el = document.getElementById('v-'+id);
+  el.textContent = val;
+  el.className = 'vval' + (cls ? ' '+cls : '');
+}
+
+// ════════════════════════════════════════════════════════
+// MISSION END — uses /summary data
+// ════════════════════════════════════════════════════════
+
+function endMission() {
+  playState.running = false;
+  document.getElementById('phase-disp').textContent = '◈ MISSION COMPLETE — GENERATING REPORT';
+  document.getElementById('risk-badge').className = '';
+  document.getElementById('risk-badge').textContent = 'COMPLETE';
+  setTimeout(() => showMC(), 500);
+  setTimeout(() => showReport(), 800);
+}
+
+function showMC() {
+  if (!simResults) return;
+  document.getElementById('mc-section').style.display = 'block';
+
+  const state = simResults.state;
+  const times = state.time;
+  const fat   = state.fatigue;
+  const slp   = state.sleep_quality;
+
+  // Subsample to ~60 points for display
+  const step = Math.max(1, Math.floor(times.length / 60));
+  const xlbl = [], fatTraj = [], slpTraj = [];
+  for (let i = 0; i < times.length; i += step) {
+    xlbl.push(`${times[i].toFixed(0)}h`);
+    fatTraj.push(+fat[i].toFixed(3));
+    slpTraj.push(+slp[i].toFixed(3));
+  }
+
+  new Chart(document.getElementById('ch-mc-t'), {
+    type:'line',
+    data:{labels:xlbl, datasets:[{data:fatTraj,borderColor:CYAN,borderWidth:2,pointRadius:0,tension:.4,fill:true,backgroundColor:CYAN+'18'}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{x:{ticks:{color:'#7aa8c8',font:{size:8}},grid:{color:'#152844'}},
+              y:{min:0,ticks:{color:'#7aa8c8',font:{size:8}},grid:{color:'#152844'}}}}
+  });
+
+  new Chart(document.getElementById('ch-mc-h'), {
+    type:'line',
+    data:{labels:xlbl, datasets:[{data:slpTraj,borderColor:GREEN,borderWidth:2,pointRadius:0,tension:.4,fill:true,backgroundColor:GREEN+'18'}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{x:{ticks:{color:'#7aa8c8',font:{size:8}},grid:{color:'#152844'}},
+              y:{min:0,max:1,ticks:{color:'#7aa8c8',font:{size:8}},grid:{color:'#152844'}}}}
+  });
+
+  // Stats from summary
+  if (simSummary) {
+    const m  = simSummary.metrics;
+    const ra = simSummary.risk_assessment;
+    const stats = [
+      ['PEAK FATIGUE',       m.fatigue.peak.toFixed(2),          m.fatigue.peak>7?'R':m.fatigue.peak>5?'W':''],
+      ['MEAN SLEEP QUALITY', m.sleep_quality.mean.toFixed(2),    m.sleep_quality.mean<.4?'R':m.sleep_quality.mean<.6?'W':''],
+      ['SMS EPISODES',       m.motion_sickness.episodes,         m.motion_sickness.episodes>4?'R':m.motion_sickness.episodes>2?'W':''],
+      ['COMPOSITE RISK',     ra ? ra.composite_risk : '—',       ra && ra.composite_risk==='HIGH'?'R':ra && ra.composite_risk==='MEDIUM'?'W':''],
+    ];
+    document.getElementById('mc-stats').innerHTML = stats.map(([l,v,c])=>
+      `<div class="mcstat"><div class="mcslabel">${l}</div><div class="mcsval ${c}">${v}</div></div>`
+    ).join('');
+  }
+}
+
+function showReport() {
+  if (!simSummary) return;
+  document.getElementById('report-section').style.display = 'block';
+  const m  = simSummary.metrics;
+  const ra = simSummary.risk_assessment;
+
+  const rows = [
+    ['OVERALL RISK LEVEL',   ra ? ra.composite_risk : '—',          ra && ra.composite_risk==='HIGH'?'R':ra && ra.composite_risk==='MEDIUM'?'W':''],
+    ['PEAK FATIGUE INDEX',   m.fatigue.peak.toFixed(3),             m.fatigue.peak>7?'R':m.fatigue.peak>5?'W':''],
+    ['MEAN SLEEP QUALITY',   m.sleep_quality.mean.toFixed(2),       m.sleep_quality.mean<.4?'R':m.sleep_quality.mean<.6?'W':''],
+    ['SLEEP EFFICIENCY',     m.sleep_quality.efficiency.toFixed(1)+'%', m.sleep_quality.efficiency<40?'R':m.sleep_quality.efficiency<60?'W':''],
+    ['SMS EPISODES',         m.motion_sickness.episodes,            m.motion_sickness.episodes>4?'R':m.motion_sickness.episodes>2?'W':''],
+    ['AVG HEART RATE',       m.heart_rate.mean.toFixed(0)+' bpm',   m.heart_rate.mean>100?'W':''],
+    ['HR VARIABILITY',       m.heart_rate.variability.toFixed(1)+' bpm', ''],
+    ['PEAK FATIGUE RISK',    ra ? ra.fatigue_risk : '—',            ra && ra.fatigue_risk==='HIGH'?'R':ra && ra.fatigue_risk==='MEDIUM'?'W':''],
+    ['MISSION DURATION',     simSummary.duration_hours.toFixed(0)+' hours', ''],
+  ];
+  document.getElementById('rtable').innerHTML =
+    rows.map(([l,v,c])=>`<tr class="${c}"><td>${l}</td><td>${v}</td></tr>`).join('');
+}
+
+// ════════════════════════════════════════════════════════
+// CONTROL INPUTS
+// ════════════════════════════════════════════════════════
+
+const sliders = [
+  ['ctrl-cyc', 'lbl-cyc', v=>`${v} days`],
+  ['ctrl-hr',  'lbl-hr',  v=>`${v} bpm`],
+  ['ctrl-sq',  'lbl-sq',  v=>(v/10).toFixed(2)],
+  ['ctrl-fat', 'lbl-fat', v=>(v/10).toFixed(1)],
+  ['ctrl-spd', 'lbl-spd', v=>(v/3).toFixed(1)+'×'],
+];
+sliders.forEach(([id,lid,fmt])=>{
+  const el = document.getElementById(id);
+  const lbl= document.getElementById(lid);
+  lbl.textContent = fmt(el.value);
+  el.oninput = () => lbl.textContent = fmt(el.value);
+});
+
+// ════════════════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════════════════
+
+window.addEventListener('load', () => {
+  initThree();
+  initCharts();
+  checkHealth();
+});
+</script>
+</body>
+</html>
