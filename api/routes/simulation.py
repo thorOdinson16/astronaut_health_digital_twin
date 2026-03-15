@@ -365,7 +365,7 @@ async def execute_simulation(
     
     try:
         # Update status
-        sim_manager.update_status(run_id, "running", progress=0)
+        await sim_manager.update_status(run_id, "running", progress=0)
         
         # =====================================================================
         # 1. INITIALIZE ALL COMPONENTS
@@ -449,7 +449,10 @@ async def execute_simulation(
                 for event in event_summary.get('new_events', []):
                     if event['type'] == 'MotionSicknessEvent':
                         # Get perturbation from event
-                        event_obj = scheduler.get_active_events('MotionSicknessEvent')[0]
+                        active = scheduler.get_active_events('MotionSicknessEvent')
+                        event_obj = active[0] if active else None
+                        if event_obj is None:
+                            continue
                         perturbation = event_obj.get_biogears_perturbation()
                         
                         # Call Person 2's BioGears adapter
