@@ -73,7 +73,7 @@ class BioGearsScenarioRunner:
         timeout_seconds: int = 120,
     ):
         self.bg_cli_path   = Path(bg_cli_path)
-        self.working_dir   = Path(working_dir) if working_dir else Path(tempfile.gettempdir()) / "biogears_runs"
+        self.working_dir = Path(working_dir) if working_dir else Path(r"C:\Program Files\BioGears\bin")
         self.timeout       = timeout_seconds
         self.working_dir.mkdir(parents=True, exist_ok=True)
 
@@ -115,7 +115,7 @@ class BioGearsScenarioRunner:
 
         try:
             result = subprocess.run(
-                [str(self.bg_cli_path), str(xml_path)],
+                [str(self.bg_cli_path), "Scenario", str(xml_path)],
                 capture_output=True,
                 text=True,
                 timeout=self.timeout,

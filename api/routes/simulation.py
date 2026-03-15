@@ -448,31 +448,28 @@ async def execute_simulation(
             if config.use_biogears and biogears:
                 for event in event_summary.get('new_events', []):
                     if event['type'] == 'MotionSicknessEvent':
-                        # Get perturbation from event
-                        active = scheduler.get_active_events('MotionSicknessEvent')
-                        event_obj = active[0] if active else None
-                        if event_obj is None:
-                            continue
-                        perturbation = event_obj.get_biogears_perturbation()
-                        
-                        # Call Person 2's BioGears adapter
-                        bio_response = await biogears.run_perturbation_async(
-                            perturbation=perturbation
-                        )
-                        
-                        # Update state with BioGears response
+                        perturbation = {
+                            'type': 'motion_sickness',
+                            'nausea_severity': event.get('severity', 0.3),
+                            'duration_minutes': event.get('duration', 10.0) * 60,
+                            'baseline_hr': config.baseline_hr,
+                            'fatigue_level': float(state.fatigue[t-1]) if t > 0 else 0.0,
+                        }
+
+                        bio_response = await biogears.run_perturbation_async(perturbation)
+
                         if bio_response:
-                            state.update(t, hr=bio_response.get('hr', state.hr[t]))
-            
-            # Update fatigue using our model
-            if t > 0:
-                new_fatigue, components = fatigue_model.compute_fatigue_update(
-                    current_fatigue=state.fatigue[t-1],
-                    sleep_quality=state.sleep_quality[t],
-                    motion_severity=state.motion_severity[t],
-                    dt_hours=dt_hours
-                )
-                state.update(t, fatigue=new_fatigue)
+                            state.update(t, hr=min(bio_response.get('hr', state.hr[t]), 160.0))
+                        
+                        # Update fatigue using our model
+                        if t > 0:
+                            new_fatigue, components = fatigue_model.compute_fatigue_update(
+                                current_fatigue=state.fatigue[t-1],
+                                sleep_quality=state.sleep_quality[t],
+                                motion_severity=state.motion_severity[t],
+                                dt_hours=dt_hours
+                            )
+                            state.update(t, fatigue=new_fatigue)
         
         # =====================================================================
         # 4. STORE RESULTS
