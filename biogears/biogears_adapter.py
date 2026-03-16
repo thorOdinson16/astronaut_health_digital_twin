@@ -83,7 +83,7 @@ class BioGearsAdapter:
 
     def __init__(
         self,
-        bg_cli_path: str = r"C:\Program Files\BioGears\bin\bg-cli.exe",
+        bg_cli_path: str = r"C:\Users\AbhiDS\biogears\bin",
         working_dir: Optional[str] = None,
         timeout_seconds: int = 120,
     ):

@@ -146,7 +146,7 @@ class SimulationResponse(BaseModel):
 class SimulationStatus(BaseModel):
     run_id: str
     status: str
-    progress: float
+    progress: Optional[float] = 0.0
     current_time_hours: float = 0.0
     events_triggered: int = 0
     active_events: int = 0
@@ -251,7 +251,7 @@ async def get_simulation_status(
 async def list_simulations(
     limit: int = Query(10, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    status: Optional[str] = Query(None, regex="^(pending|running|completed|failed)$"),
+    status: Optional[str] = Query(None, pattern="^(pending|running|completed|failed)$"),
     sim_manager: SimulationManager = Depends(get_simulation_manager)
 ):
     """
