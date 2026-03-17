@@ -109,6 +109,26 @@ input[type=range]{width:100%;height:2px;accent-color:var(--cyan);cursor:pointer}
 #rtable tr.W td:last-child{color:var(--amber)}
 #rtable tr.R td:last-child{color:var(--red)}
 
+/* LOAD MODAL */
+#load-overlay{display:none;position:fixed;inset:0;background:rgba(2,8,18,.88);z-index:1000;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
+#load-overlay.open{display:flex}
+#load-modal{background:var(--panel);border:1px solid var(--border2);border-radius:4px;padding:20px;width:520px;max-width:95vw;max-height:80vh;display:flex;flex-direction:column;gap:12px}
+#load-modal .ptitle{margin:0;border-bottom:1px solid var(--border);padding-bottom:8px}
+#load-list{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:5px;max-height:340px}
+.run-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:3px;cursor:pointer;transition:border-color .2s,background .2s}
+.run-item:hover{border-color:var(--cyan);background:rgba(0,212,255,.04)}
+.run-item.selected{border-color:var(--cyan);background:rgba(0,212,255,.08)}
+.run-id{font-size:9px;color:var(--cyan);letter-spacing:1px;flex:1}
+.run-meta{font-size:8px;color:var(--text);text-align:right;line-height:1.6}
+.run-badge{font-size:7px;padding:2px 6px;border-radius:2px;letter-spacing:1px}
+.run-badge.completed{background:rgba(0,232,122,.1);color:var(--green);border:1px solid rgba(0,232,122,.3)}
+.run-badge.failed{background:rgba(255,64,64,.1);color:var(--red);border:1px solid rgba(255,64,64,.3)}
+.run-badge.running{background:rgba(255,170,0,.1);color:var(--amber);border:1px solid rgba(255,170,0,.3)}
+#load-empty{color:rgba(120,168,200,.35);font-size:10px;text-align:center;padding:30px;letter-spacing:2px}
+#load-modal-btns{display:flex;gap:8px}
+#load-modal-btns .btn{flex:1;margin:0}
+#load-refresh-spinner{font-size:8px;color:var(--text);letter-spacing:1px;height:14px;text-align:center}
+
 /* Scrollbar */
 ::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:var(--panel)}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
 </style>
@@ -147,6 +167,7 @@ input[type=range]{width:100%;height:2px;accent-color:var(--cyan);cursor:pointer}
     <div class="crow"><div class="clabel">PLAYBACK SPEED <span id="lbl-spd">1.0×</span></div><input type="range" id="ctrl-spd" min="1" max="8" value="3"></div>
 
     <button class="btn primary" id="btn-run" onclick="startSimulation()">◈ RUN SIMULATION</button>
+    <button class="btn" id="btn-load" onclick="openLoadModal()" style="border-color:var(--purple);color:var(--purple)">⇩ LOAD EXISTING</button>
     <button class="btn" id="btn-play" onclick="startPlay()" disabled>▶ PLAY RESULTS</button>
     <button class="btn" id="btn-pause" onclick="togglePause()" disabled>⏸ PAUSE</button>
     <button class="btn" id="btn-reset" onclick="resetPlay()" disabled>⏮ RESET</button>
@@ -220,6 +241,20 @@ input[type=range]{width:100%;height:2px;accent-color:var(--cyan);cursor:pointer}
 </div>
 
 </div><!-- end app -->
+
+<!-- LOAD EXISTING SIMULATION MODAL -->
+<div id="load-overlay" onclick="closeLoadModal(event)">
+  <div id="load-modal">
+    <div class="ptitle">⇩ LOAD EXISTING SIMULATION RUN</div>
+    <div id="load-refresh-spinner"></div>
+    <div id="load-list"><div id="load-empty">FETCHING RUNS...</div></div>
+    <div id="load-modal-btns">
+      <button class="btn" onclick="refreshRunList()">↺ REFRESH</button>
+      <button class="btn" id="btn-load-confirm" onclick="confirmLoad()" disabled style="border-color:var(--cyan);color:var(--cyan)">◈ LOAD SELECTED</button>
+      <button class="btn" onclick="closeLoadModal()">✕ CANCEL</button>
+    </div>
+  </div>
+</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
@@ -367,7 +402,7 @@ function buildTimeline() {
   const events = simEvents;
   const times  = state.time;
   const fat    = state.fatigue;
-  const totalH = times[times.length - 1];
+  const totalH = times[times.length - 1] / 60;
   const nDays  = Math.ceil(totalH / 24);
 
   document.getElementById('tl-meta').textContent =
@@ -690,7 +725,7 @@ function playLoop(ts) {
   const state  = simResults.state;
   const idx    = playState.idx;
   const total  = state.time.length;
-  const timeH  = state.time[idx];
+  const timeH  = state.time[idx] / 60;
 
   // Mission clock
   missionSecs += dt * 3600; // simulate time passing
@@ -841,7 +876,7 @@ function showReport() {
     ['AVG HEART RATE',       m.heart_rate.mean.toFixed(0)+' bpm',   m.heart_rate.mean>100?'W':''],
     ['HR VARIABILITY',       m.heart_rate.variability.toFixed(1)+' bpm', ''],
     ['PEAK FATIGUE RISK',    ra ? ra.fatigue_risk : '—',            ra && ra.fatigue_risk==='HIGH'?'R':ra && ra.fatigue_risk==='MEDIUM'?'W':''],
-    ['MISSION DURATION',     simSummary.duration_hours.toFixed(0)+' hours', ''],
+    ['MISSION DURATION',     (simSummary.duration_hours/60).toFixed(0)+' hours', ''],
   ];
   document.getElementById('rtable').innerHTML =
     rows.map(([l,v,c])=>`<tr class="${c}"><td>${l}</td><td>${v}</td></tr>`).join('');
@@ -868,6 +903,137 @@ sliders.forEach(([id,lid,fmt])=>{
 // ════════════════════════════════════════════════════════
 // INIT
 // ════════════════════════════════════════════════════════
+
+// ════════════════════════════════════════════════════════
+// LOAD EXISTING SIMULATION
+// ════════════════════════════════════════════════════════
+
+let selectedRunId = null;
+let allRuns = [];
+
+async function openLoadModal() {
+  document.getElementById('load-overlay').classList.add('open');
+  selectedRunId = null;
+  document.getElementById('btn-load-confirm').disabled = true;
+  await refreshRunList();
+}
+
+function closeLoadModal(e) {
+  if (e && e.target !== document.getElementById('load-overlay')) return;
+  document.getElementById('load-overlay').classList.remove('open');
+}
+
+async function refreshRunList() {
+  const spinner = document.getElementById('load-refresh-spinner');
+  const list    = document.getElementById('load-list');
+  spinner.textContent = '◌ FETCHING RUNS...';
+  list.innerHTML = '';
+
+  try {
+    // Try /api/simulation/list first, fall back to /api/data/runs
+    let runs = [];
+    try {
+      const r = await apiGet('/api/simulation/list');
+      runs = r.runs || r || [];
+    } catch {
+      try {
+        const r = await apiGet('/api/data/runs');
+        runs = r.runs || r || [];
+      } catch {
+        // Try to get IDs from runs endpoint
+        const r = await apiGet('/api/simulation/runs');
+        runs = r.runs || r || [];
+      }
+    }
+
+    allRuns = runs;
+    spinner.textContent = `${runs.length} run${runs.length!==1?'s':''} found`;
+
+    if (!runs.length) {
+      list.innerHTML = '<div id="load-empty">NO COMPLETED RUNS FOUND</div>';
+      return;
+    }
+
+    // Sort: newest first (by run_id string which contains timestamp-like hash, or use created_at)
+    runs.sort((a,b) => {
+      const ta = a.created_at || a.run_id || '';
+      const tb = b.created_at || b.run_id || '';
+      return tb.localeCompare(ta);
+    });
+
+    runs.forEach(run => {
+      const id       = run.run_id || run.id || run;
+      const status   = run.status || 'completed';
+      const duration = run.mission_duration_hours ? `${(run.mission_duration_hours/24).toFixed(0)}d` : '';
+      const steps    = run.timesteps ? `${run.timesteps} steps` : '';
+      const ts       = run.created_at ? new Date(run.created_at).toLocaleString() : '';
+      const meta     = [duration, steps, ts].filter(Boolean).join(' · ');
+
+      const div = document.createElement('div');
+      div.className = 'run-item';
+      div.dataset.runId = id;
+      div.innerHTML = `
+        <div style="flex:1;min-width:0">
+          <div class="run-id">${id}</div>
+          ${meta ? `<div class="run-meta">${meta}</div>` : ''}
+        </div>
+        <span class="run-badge ${status}">${status.toUpperCase()}</span>`;
+      div.onclick = () => selectRun(id, div);
+      list.appendChild(div);
+    });
+
+  } catch(e) {
+    spinner.textContent = '';
+    list.innerHTML = `<div id="load-empty" style="color:var(--red)">ERROR: ${e.message}</div>`;
+  }
+}
+
+function selectRun(id, el) {
+  document.querySelectorAll('.run-item').forEach(r => r.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedRunId = id;
+  document.getElementById('btn-load-confirm').disabled = false;
+}
+
+async function confirmLoad() {
+  if (!selectedRunId) return;
+  document.getElementById('load-overlay').classList.remove('open');
+
+  setApiStatus('busy', `Loading run ${selectedRunId}...`, 10, selectedRunId);
+  currentRunId = selectedRunId;
+  document.getElementById('bg-cyc').textContent = currentRunId;
+  document.getElementById('api-run-id').textContent = currentRunId;
+
+  try {
+    // If run is still in progress, poll until complete
+    const status = await apiGet(`/api/simulation/status/${currentRunId}`);
+    if (status.status === 'running' || status.status === 'pending') {
+      setApiStatus('busy', `Run still in progress — polling...`, 50, currentRunId);
+      await pollUntilComplete(currentRunId, (pct, st) => {
+        setApiStatus('busy', `[${st.toUpperCase()}] ${pct.toFixed(0)}% complete`, pct, currentRunId);
+      });
+    }
+
+    setApiStatus('busy', 'Fetching results...', 80, currentRunId);
+    await fetchAllResults(currentRunId);
+
+    setApiStatus('', `Loaded ${currentRunId} — ${simResults.state.time.length} timesteps`, 100, currentRunId);
+
+    document.getElementById('btn-play').disabled  = false;
+    document.getElementById('btn-reset').disabled = false;
+
+    buildTimeline();
+    populateStatusPanel();
+    checkHealth();
+
+    document.getElementById('phase-disp').textContent = '◈ EXISTING RUN LOADED — PRESS PLAY';
+    document.getElementById('phase-name').textContent  = 'LOADED';
+
+  } catch(e) {
+    setApiStatus('err', 'Load failed: ' + e.message, 0);
+    console.error(e);
+  }
+}
 
 window.addEventListener('load', () => {
   initThree();

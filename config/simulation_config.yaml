@@ -36,7 +36,7 @@ astronaut:
   # Fatigue parameters
   initial_fatigue: 0.0  # [0-10] - starting fatigue level
   max_fatigue: 10.0  # [0-10] - maximum fatigue index
-  fatigue_recovery_rate: 0.2  # per hour - recovery during sleep
+  fatigue_recovery_rate: 0.08  # per hour - recovery during sleep
   
   # Stress parameters
   baseline_stress: 0.2  # [0-1] - nominal stress level

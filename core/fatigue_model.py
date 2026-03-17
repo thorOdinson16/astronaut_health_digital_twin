@@ -27,14 +27,14 @@ class FatigueParameters:
     """
     alpha_sleep_debt: float = 0.3  # Fatigue per unit sleep deficit
     beta_motion_stress: float = 0.5  # Fatigue per unit motion severity
-    gamma_recovery: float = 0.2  # Recovery rate during sleep
-    recovery_threshold: float = 0.7  # Sleep quality needed for recovery
+    gamma_recovery: float = 0.08  # Recovery rate during sleep
+    recovery_threshold: float = 0.6  # Sleep quality needed for recovery
     max_fatigue: float = 10.0  # Maximum fatigue index
     min_fatigue: float = 0.0  # Minimum fatigue index
     
     # Nonlinear effects
     fatigue_sensitivity: float = 1.2  # Exponent for fatigue accumulation
-    recovery_efficiency: float = 1.5  # Multiplier for deep sleep recovery
+    recovery_efficiency: float = 0.8  # Multiplier for deep sleep recovery
     
     def validate(self):
         """Validate parameter bounds."""
