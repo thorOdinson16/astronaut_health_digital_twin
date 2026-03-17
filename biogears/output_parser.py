@@ -220,6 +220,11 @@ class BioGearsOutputParser:
             core_temp_celsius = extract("core_temp_celsius"),
         )
 
+        if output.spo2.max() > 1.5:
+            logger.warning(f"SpO2 appears to be percentage (max={output.spo2.max():.1f}) — normalising to fraction")
+            output.spo2     = output.spo2 / 100.0
+            output.min_spo2 = float(np.min(output.spo2))
+
         logger.info(
             f"Parsed {len(time_s)} rows | "
             f"HR: {output.mean_hr:.1f} bpm (peak {output.peak_hr:.1f}) | "

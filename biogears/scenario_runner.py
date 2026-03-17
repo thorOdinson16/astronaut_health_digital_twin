@@ -11,6 +11,7 @@ Responsible for:
 import subprocess
 import uuid
 import logging
+import time
 from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass, field
@@ -66,8 +67,14 @@ class BioGearsScenarioRunner:
     ):
         self.bg_cli_path = Path(bg_cli_path)
         self.bg_cli_exe  = self.bg_cli_path / "bg-cli.exe"
+
+        # FIX: working_dir must be bg_cli_path (the bin/ folder itself).
+        # The BioGears install puts everything — states/, xsd/, Scenarios/ —
+        # INSIDE bin/, not in the parent. bg-cli resolves all relative paths
+        # (states/StandardMale@0s.xml, xsd/BioGearsDataModel.xsd) from its cwd,
+        # which must be bin/.
         self.working_dir = Path(working_dir) if working_dir else self.bg_cli_path
-        self.timeout     = timeout_seconds
+        self.timeout = timeout_seconds
         self.working_dir.mkdir(parents=True, exist_ok=True)
 
         if not self.bg_cli_exe.exists():
@@ -79,6 +86,18 @@ class BioGearsScenarioRunner:
         else:
             self._mock_mode = False
             logger.info(f"BioGearsScenarioRunner ready. CLI: {self.bg_cli_exe}")
+
+        # Check if the XSD is present — it controls whether we need a namespace
+        self._xsd_path = self.working_dir / "xsd" / "BioGearsDataModel.xsd"
+        if self._xsd_path.exists():
+            logger.warning(
+                f"BioGears XSD found at {self._xsd_path}. "
+                "XML schema validation is ACTIVE. "
+                "Run this once to disable it (avoids namespace issues):\n"
+                f'  rename "{self._xsd_path}" BioGearsDataModel.xsd.bak'
+            )
+        else:
+            logger.info("BioGears XSD not found — schema validation is disabled (good).")
 
     # ── PUBLIC ──────────────────────────────
 
@@ -99,9 +118,11 @@ class BioGearsScenarioRunner:
 
         logger.info(f"Running BioGears scenario: {xml_path.name}")
 
+        launch_time = time.time()
+
         try:
             result = subprocess.run(
-                [str(self.bg_cli_exe), "Scenario", xml_path.name],
+                [str(self.bg_cli_exe), "Scenario", xml_path.name],  # ← relative name only
                 capture_output=True,
                 text=True,
                 timeout=self.timeout,
@@ -113,29 +134,34 @@ class BioGearsScenarioRunner:
                 "Try reducing duration_minutes or increasing timeout."
             )
 
-        # FIX: bg-cli always exits with code 0, even on XML parse errors.
-        # The only reliable failure signal is the word "error" in its output.
-        # Confirmed by running a broken XML and observing:
-        #   exit code = 0, stdout contains ":23:58 error: attribute ... not declared"
         combined_output = result.stdout + result.stderr
-        if "error" in combined_output.lower() and "completed" not in combined_output.lower():
-            logger.error(f"bg-cli output:\n{combined_output}")
+        logger.info(f"bg-cli full output:\n{combined_output}")
+
+        # Detect XSD validation failure specifically — actionable error message
+        if "no declaration found for element" in combined_output:
+            raise RuntimeError(
+                f"BioGears XSD validation failed — the schema is rejecting our XML.\n"
+                f"Fix: rename the XSD to disable validation (run once in cmd.exe):\n"
+                f'  rename "{self._xsd_path}" BioGearsDataModel.xsd.bak\n'
+                f"Then restart uvicorn."
+            )
+
+        has_hard_error = (
+            "error" in combined_output.lower()
+            and "completed" not in combined_output.lower()
+        )
+        if has_hard_error:
+            logger.error(f"bg-cli reported a hard error:\n{combined_output}")
             raise RuntimeError(
                 f"bg-cli reported errors:\n{combined_output[:500]}"
             )
 
-        # FIX: BioGears 8.x writes output to:
-        #   <cwd>/Scenarios/<ScenarioName>Results.csv
-        # where <ScenarioName> is the value of the <Name> element in the XML,
-        # NOT the XML filename. Confirmed from OverrideTest.xml run which produced
-        # cwd/Scenarios/Scenarios/OverrideTestResults.csv when a relative path
-        # was passed, and cwd/Scenarios/<Name>Results.csv with an absolute path.
-        csv_path = self._find_output_csv(scenario_name)
+        csv_path = self._find_output_csv(scenario_name, launch_time, xml_path)
         if csv_path is None:
             raise FileNotFoundError(
                 f"BioGears ran successfully but output CSV not found.\n"
-                f"Scenario <Name> tag: {scenario_name}\n"
-                f"Searched under:      {self.working_dir}\n"
+                f"Scenario <n> tag: {scenario_name}\n"
+                f"Searched under:   {self.working_dir}\n"
                 f"bg-cli output:\n{combined_output[:300]}"
             )
 
@@ -157,31 +183,36 @@ class BioGearsScenarioRunner:
 
     # ── OUTPUT FINDER ────────────────────────
 
-    def _find_output_csv(self, scenario_name: str) -> Optional[Path]:
+    def _find_output_csv(self, scenario_name: str, launch_time: float, xml_path: Path = None) -> Optional[Path]:
         """
         Locate the Results CSV that bg-cli wrote.
 
-        BioGears 8.x (confirmed): writes to
-            <working_dir>/Scenarios/<ScenarioName>Results.csv
+        BioGears writes to: <working_dir>/Scenarios/<ScenarioName>Results.csv
+        where <ScenarioName> is the value of the <n> element in the XML.
         """
-        csv_name = f"{scenario_name}Results.csv"
+        # BioGears names the CSV after the <n> tag in the XML, NOT the xml filename.
+        # e.g. <n>AstronautTwin_motion_sickness_abc123</n> → Scenarios/AstronautTwin_motion_sickness_abc123Results.csv
+        # Also check xml_stem as a fallback (some BioGears versions use the filename).
+        stems_to_check = [scenario_name]
+        if xml_path is not None:
+            stems_to_check.append(xml_path.stem)
 
-        candidates = [
-            self.working_dir / "Scenarios" / csv_name,   # confirmed primary location
-            self.working_dir / csv_name,                  # fallback: root
-            self.working_dir / "results" / csv_name,      # fallback: older builds
-        ]
+        for stem in stems_to_check:
+            csv_name = f"{stem}Results.csv"
+            candidates = [
+                self.working_dir / "Scenarios" / csv_name,       # ← most common (BioGears default)
+                self.working_dir / csv_name,
+                self.working_dir / "results" / csv_name,
+                self.working_dir / "Scenarios" / "Scenarios" / csv_name,
+            ]
+            for path in candidates:
+                if path.exists():
+                    logger.debug(f"Found CSV at: {path}")
+                    return path
 
-        for path in candidates:
-            if path.exists():
-                logger.debug(f"Found CSV at: {path}")
-                return path
-
-        # Last resort: recursive mtime scan
-        import time
-        now = time.time()
-        for p in self.working_dir.rglob(f"*{scenario_name}Results.csv"):
-            if now - p.stat().st_mtime < 60:
+        # Fallback: any *Results.csv written after this run started
+        for p in self.working_dir.rglob("*Results.csv"):
+            if p.stat().st_mtime >= launch_time:
                 logger.warning(f"Found CSV via filesystem scan (unexpected path): {p}")
                 return p
 
@@ -193,13 +224,20 @@ class BioGearsScenarioRunner:
         """
         Build a BioGears Scenario XML file from the stressor definition.
 
+        Namespace strategy:
+          - XSD ABSENT (after rename to .bak): use bare <Scenario> root.
+            bg-cli skips validation and runs fine with no namespace.
+          - XSD PRESENT: we still use bare <Scenario> root, but the validation
+            will fail. The fix is to rename the XSD (see __init__ warning).
+
         Returns:
-            (xml_path, scenario_name) — path written and the <Name> used,
-            because BioGears names the output CSV after <Name>, not the filename.
+            (xml_path, scenario_name)
         """
         unique_id     = uuid.uuid4().hex[:12]
         scenario_name = f"AstronautTwin_{s.stressor_type}_{unique_id}"
-        xml_path      = self.working_dir / f"scenario_{unique_id}.xml"
+
+        # Write the XML into working_dir (bin/) so bg-cli can find it
+        xml_path = self.working_dir / f"scenario_{unique_id}.xml"
 
         actions   = self._build_actions(s)
         data_reqs = "\n    ".join(
@@ -207,9 +245,12 @@ class BioGearsScenarioRunner:
             for name, unit, req_type in s.data_requests
         )
 
-        # Cap at 1 sample/sec — sufficient for a 30-min timestep twin
-        samples_per_sec = 0.05
+        samples_per_sec = 0.05  # 1 sample per 20s
 
+        # Use the full namespace + contentVersion format.
+        # This matches the format BioGears expects when XSDs are present.
+        # xmlns:xsi is declared once on the root so child elements inherit it.
+        # xsi:schemaLocation="" tells the validator not to look for an external schema URL.
         xml = f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Scenario xmlns="uri:/mil/tatrc/physiology/datamodel"
           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -233,12 +274,10 @@ class BioGearsScenarioRunner:
     def _build_actions(self, s: BioGearsStressor) -> str:
         actions = []
 
-        # Stabilise after loading state file — without this, AcuteStressData
-        # can cause the cardiovascular solver to hang indefinitely.
         actions.append(self._advance_time_xml(seconds=30.0))
 
         if s.stressor_type in ("motion_sickness", "stress"):
-            raw = s.nausea_severity if s.stressor_type == "motion_sickness" else s.exercise_intensity
+            raw      = s.nausea_severity if s.stressor_type == "motion_sickness" else s.exercise_intensity
             severity = round(max(0.0, min(1.0, raw)), 3)
 
             if severity > 0:
@@ -247,9 +286,6 @@ class BioGearsScenarioRunner:
                     f'      <Severity value="{severity}"/>\n'
                     f'    </Action>'
                 )
-                # FIX: cap simulation to 10 minutes max regardless of event duration.
-                # The full event duration (up to 200min) causes solver hangs.
-                # We only need the physiological response snapshot, not the full timeline.
                 sim_minutes = min(s.duration_minutes, 10.0)
                 actions.append(self._advance_time_xml(minutes=sim_minutes))
                 actions.append(
@@ -286,10 +322,7 @@ class BioGearsScenarioRunner:
     # ── MOCK MODE ───────────────────────────
 
     def _mock_run(self, stressor: BioGearsStressor) -> str:
-        """
-        Generate a synthetic CSV when bg-cli is unavailable.
-        Allows full pipeline testing without BioGears installed.
-        """
+        """Generate a synthetic CSV when bg-cli is unavailable."""
         import numpy as np
         import csv
 

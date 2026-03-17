@@ -85,7 +85,7 @@ class BioGearsAdapter:
         self,
         bg_cli_path: str = r"C:\Users\AbhiDS\biogears\bin",
         working_dir: Optional[str] = None,
-        timeout_seconds: int = 120,
+        timeout_seconds: int = 300,
     ):
         self.runner = BioGearsScenarioRunner(
             bg_cli_path=bg_cli_path,
