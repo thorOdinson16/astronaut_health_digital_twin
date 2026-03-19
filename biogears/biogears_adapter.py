@@ -36,6 +36,10 @@ import asyncio
 import logging
 from typing import Optional, Dict, Any
 import numpy as np
+import os
+from dotenv import load_dotenv
+load_dotenv()  
+
 
 from .scenario_runner import BioGearsScenarioRunner, BioGearsStressor
 from .output_parser   import BioGearsOutputParser, BioGearsOutput
@@ -83,7 +87,7 @@ class BioGearsAdapter:
 
     def __init__(
         self,
-        bg_cli_path: str = r"C:\Users\AbhiDS\biogears\bin",
+        bg_cli_path: str = os.environ.get("BIOGEARS_PATH"),
         working_dir: Optional[str] = None,
         timeout_seconds: int = 300,
     ):
