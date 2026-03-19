@@ -256,7 +256,10 @@ input[type=range]{width:100%;height:2px;accent-color:var(--cyan);cursor:pointer}
   </div>
 </div>
 
+<!-- Three.js r128 + GLTFLoader via CDN -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<!-- GLTFLoader r128 from jsDelivr -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script>
 
@@ -274,7 +277,7 @@ function setApiStatus(state, msg, progress=null, runId=null) {
   const msgEl = document.getElementById('api-msg');
   const fill = document.getElementById('api-prog-fill');
   const ridEl = document.getElementById('api-run-id');
-  dot.className = state; // '', 'err', 'busy'
+  dot.className = state;
   msgEl.textContent = msg;
   if (progress !== null) fill.style.width = progress + '%';
   if (runId) ridEl.textContent = runId;
@@ -311,9 +314,9 @@ async function pollUntilComplete(runId, onProgress) {
 // ════════════════════════════════════════════════════════
 
 let currentRunId = null;
-let simResults = null;   // full results from /api/data/results/{id}
-let simSummary = null;   // from /api/data/results/{id}/summary
-let simEvents  = null;   // from /api/data/results/{id}/events
+let simResults = null;
+let simSummary = null;
+let simEvents  = null;
 
 async function startSimulation() {
   const btn = document.getElementById('btn-run');
@@ -329,7 +332,7 @@ async function startSimulation() {
     initial_fatigue: +document.getElementById('ctrl-fat').value / 10,
     enable_motion_sickness: true,
     enable_sleep_disruption: true,
-    use_biogears: true,
+    use_biogears: false,
     save_trajectories: true,
     save_events: true,
   };
@@ -393,7 +396,7 @@ async function checkHealth() {
 }
 
 // ════════════════════════════════════════════════════════
-// TIMELINE — built from /events endpoint
+// TIMELINE
 // ════════════════════════════════════════════════════════
 
 function buildTimeline() {
@@ -413,7 +416,6 @@ function buildTimeline() {
 
   for (let d = 0; d < nDays; d++) {
     const dStart = d * 24, dEnd = (d+1) * 24;
-    // Average fatigue for this day
     const indices = times.map((t,i) => t >= dStart && t < dEnd ? i : -1).filter(i => i >= 0);
     const avgFat = indices.length ? indices.reduce((s,i) => s + fat[i], 0) / indices.length : 0;
 
@@ -447,7 +449,7 @@ function tlActivate(idx) {
 }
 
 // ════════════════════════════════════════════════════════
-// STATUS PANEL — from /summary endpoint
+// STATUS PANEL
 // ════════════════════════════════════════════════════════
 
 function populateStatusPanel() {
@@ -457,11 +459,10 @@ function populateStatusPanel() {
 
   document.getElementById('st-pf').textContent  = m.fatigue.peak.toFixed(3);
   document.getElementById('st-sms').textContent = m.motion_sickness.episodes;
-  document.getElementById('st-dis').textContent = '—'; // not always in summary
+  document.getElementById('st-dis').textContent = '—';
   document.getElementById('st-sq').textContent  = m.sleep_quality.mean.toFixed(2);
   document.getElementById('st-hr').textContent  = m.heart_rate.mean.toFixed(0) + ' bpm';
 
-  // Populate event log from /events
   const elog = document.getElementById('elog');
   elog.innerHTML = '';
   if (!simEvents.length) {
@@ -482,11 +483,383 @@ function populateStatusPanel() {
 }
 
 // ════════════════════════════════════════════════════════
-// THREE.JS ASTRONAUT (unchanged)
+// THREE.JS — INTERSTELLAR SPACESHIP SCENE + GLB ASTRONAUT
 // ════════════════════════════════════════════════════════
 
-let renderer3, scene3, cam3, astronaut, bodyMesh, bodyMat, headMesh, headMat, visorMat, riskRing, riskRingMat, aimb;
+let renderer3, scene3, cam3, astronaut, aimb;
+let tarsGroup, tarsLight, tarsScreenMat;
+let bodyMesh, bodyMat; // kept for compatibility (pulse applied to astronaut root)
+let riskRing, riskRingMat;
 let threeOK = false;
+let glbLoaded = false;
+
+function buildTARS() {
+  // TARS: 4 tall rectangular gunmetal panels standing upright, narrow gaps between them
+  // Reference: dark grey/black monolith, chrome edges, single horizontal eye slit
+  const group = new THREE.Group();
+
+  // Materials — dark gunmetal with strong specular for that industrial look
+  const bodyMat = new THREE.MeshPhongMaterial({
+    color: 0x2a2d30, shininess: 180, specular: 0x999999
+  });
+  const darkMat = new THREE.MeshPhongMaterial({
+    color: 0x111314, shininess: 40, specular: 0x333333
+  });
+  const chromeMat = new THREE.MeshPhongMaterial({
+    color: 0x777c80, shininess: 255, specular: 0xffffff
+  });
+
+  // 4 upright panels — tall and thin like the reference
+  // Each panel: ~0.28 wide, 1.9 tall, 0.22 deep. Gap between: 0.035
+  const panelW = 0.28, panelH = 1.90, panelD = 0.22, gap = 0.038;
+  const totalW = 4 * panelW + 3 * gap;
+  const startX = -totalW / 2 + panelW / 2;
+
+  for (let i = 0; i < 4; i++) {
+    const px = startX + i * (panelW + gap);
+
+    // Main panel body
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(panelW, panelH, panelD), bodyMat.clone());
+    panel.position.set(px, panelH / 2, 0);
+    group.add(panel);
+
+    // Recessed darker face (inset front face effect)
+    const face = new THREE.Mesh(new THREE.BoxGeometry(panelW - 0.04, panelH - 0.04, 0.01), darkMat);
+    face.position.set(px, panelH / 2, panelD / 2 + 0.005);
+    group.add(face);
+
+    // Chrome top cap
+    const topCap = new THREE.Mesh(new THREE.BoxGeometry(panelW + 0.01, 0.04, panelD + 0.01), chromeMat);
+    topCap.position.set(px, panelH + 0.02, 0);
+    group.add(topCap);
+
+    // Chrome bottom cap
+    const botCap = new THREE.Mesh(new THREE.BoxGeometry(panelW + 0.01, 0.04, panelD + 0.01), chromeMat);
+    botCap.position.set(px, -0.02, 0);
+    group.add(botCap);
+
+    // Chrome left/right edge rails
+    const railGeo = new THREE.BoxGeometry(0.015, panelH, panelD + 0.02);
+    const railL = new THREE.Mesh(railGeo, chromeMat);
+    const railR = new THREE.Mesh(railGeo, chromeMat);
+    railL.position.set(px - panelW / 2 - 0.007, panelH / 2, 0);
+    railR.position.set(px + panelW / 2 + 0.007, panelH / 2, 0);
+    group.add(railL, railR);
+
+    // Horizontal score lines across each panel (structural detail)
+    for (let s = 0; s < 5; s++) {
+      const scoreY = 0.3 + s * 0.32;
+      const score = new THREE.Mesh(new THREE.BoxGeometry(panelW - 0.06, 0.008, 0.012), chromeMat);
+      score.position.set(px, scoreY, panelD / 2 + 0.006);
+      group.add(score);
+    }
+  }
+
+  // Gap covers — thin dark strips between panels (shows the gap is intentional)
+  for (let i = 0; i < 3; i++) {
+    const gx = startX + panelW + i * (panelW + gap) - gap / 2 + gap / 2;
+    const gapCover = new THREE.Mesh(new THREE.BoxGeometry(gap, panelH + 0.1, panelD - 0.04), darkMat);
+    gapCover.position.set(startX + panelW + i * (panelW + gap) - gap / 2 - panelW / 2 + gap / 2, panelH / 2, 0);
+    // skip — gaps are naturally dark
+  }
+
+  // EYE SLIT — single horizontal glowing line, spanning all 4 panels
+  // Positioned at ~60% height (like the reference image)
+  const eyeY = panelH * 0.62;
+  const eyeW = totalW + 0.02;
+
+  // Eye housing (recessed slot)
+  const eyeSlot = new THREE.Mesh(new THREE.BoxGeometry(eyeW, 0.09, 0.04), darkMat);
+  eyeSlot.position.set(0, eyeY, panelD / 2 - 0.01);
+  group.add(eyeSlot);
+
+  // Glowing eye core
+  tarsScreenMat = new THREE.MeshBasicMaterial({ color: 0x00c8ff });
+  const eye = new THREE.Mesh(new THREE.BoxGeometry(eyeW - 0.04, 0.045, 0.02), tarsScreenMat);
+  eye.position.set(0, eyeY, panelD / 2 + 0.01);
+  group.add(eye);
+
+  // Eye glow plane (wider soft glow)
+  const glowMat = new THREE.MeshBasicMaterial({ color: 0x004466, transparent: true, opacity: 0.4 });
+  const eyeGlow = new THREE.Mesh(new THREE.BoxGeometry(eyeW + 0.1, 0.18, 0.005), glowMat);
+  eyeGlow.position.set(0, eyeY, panelD / 2 + 0.02);
+  group.add(eyeGlow);
+
+  // Scan line (animated, moves up/down)
+  const scanMat = new THREE.MeshBasicMaterial({ color: 0x00ffee, transparent: true, opacity: 0.7 });
+  const scan = new THREE.Mesh(new THREE.BoxGeometry(eyeW - 0.06, 0.012, 0.015), scanMat);
+  scan.position.set(0, eyeY - 0.3, panelD / 2 + 0.015);
+  scan.name = 'tars_scan';
+  group.add(scan);
+
+  // Base plate — wide foot connecting all panels
+  const basePlate = new THREE.Mesh(new THREE.BoxGeometry(totalW + 0.12, 0.06, panelD + 0.08), chromeMat);
+  basePlate.position.set(0, -0.03, 0);
+  group.add(basePlate);
+
+  // Foot blocks (2 legs)
+  const footMat = new THREE.MeshPhongMaterial({ color: 0x1a1d1f, shininess: 60, specular: 0x555555 });
+  const footL = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.18, 0.30), footMat);
+  const footR = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.18, 0.30), footMat);
+  footL.position.set(-totalW / 2 + 0.11, -0.09, 0.04);
+  footR.position.set(totalW / 2 - 0.11, -0.09, 0.04);
+  group.add(footL, footR);
+
+  // TARS point light (eye glow onto scene)
+  tarsLight = new THREE.PointLight(0x00c8ff, 1.2, 3.5);
+  tarsLight.position.set(0, eyeY, panelD / 2 + 0.8);
+  group.add(tarsLight);
+
+  // Position: to the right, slightly back, angled toward camera
+  group.position.set(2.8, 0.18, -0.8);
+  group.rotation.y = -0.65;
+  return group;
+}
+
+function buildSpaceshipInterior() {
+  const group = new THREE.Group();
+
+  // ── MATERIALS ──────────────────────────────────────────
+  const steelMat   = new THREE.MeshPhongMaterial({ color: 0x1c2128, shininess: 60, specular: 0x334455 });
+  const darkSteel  = new THREE.MeshPhongMaterial({ color: 0x0e1218, shininess: 30, specular: 0x223344 });
+  const panelMat   = new THREE.MeshPhongMaterial({ color: 0x161c22, shininess: 20, specular: 0x1a2233 });
+  const chromeMat  = new THREE.MeshPhongMaterial({ color: 0x445566, shininess: 200, specular: 0xaabbcc });
+  const glowMat    = new THREE.MeshBasicMaterial({ color: 0x001833 });
+  const floorMat   = new THREE.MeshPhongMaterial({ color: 0x111820, shininess: 80, specular: 0x223344 });
+  const ceilingMat = new THREE.MeshPhongMaterial({ color: 0x0c1018, shininess: 10 });
+  const glassMat   = new THREE.MeshPhongMaterial({ color: 0x000d1a, transparent: true, opacity: 0.55, shininess: 300, specular: 0x5599cc });
+
+  // ── FLOOR ──────────────────────────────────────────────
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(18, 16), floorMat);
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = 0;
+  group.add(floor);
+
+  // Floor grating grid — two tone
+  const grid1 = new THREE.GridHelper(18, 36, 0x1a2a3a, 0x0f1a24);
+  grid1.position.y = 0.002;
+  group.add(grid1);
+
+  // Floor panel seams (horizontal bolted sections)
+  for (let z = -6; z <= 6; z += 2) {
+    const seam = new THREE.Mesh(new THREE.BoxGeometry(18, 0.015, 0.04), chromeMat);
+    seam.position.set(0, 0.008, z);
+    group.add(seam);
+  }
+
+  // ── CEILING ────────────────────────────────────────────
+  const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(18, 16), ceilingMat);
+  ceiling.rotation.x = Math.PI / 2;
+  ceiling.position.y = 6.5;
+  group.add(ceiling);
+
+  // Ceiling structural ribs (curved cross-beams across width)
+  for (let z = -5; z <= 4; z += 3) {
+    const rib = new THREE.Mesh(new THREE.BoxGeometry(18, 0.18, 0.22), steelMat);
+    rib.position.set(0, 6.35, z);
+    group.add(rib);
+    // Rib flanges
+    const flangeL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.32, 0.22), chromeMat);
+    const flangeR = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.32, 0.22), chromeMat);
+    flangeL.position.set(-8.94, 6.2, z);
+    flangeR.position.set(8.94, 6.2, z);
+    group.add(flangeL, flangeR);
+  }
+
+  // Overhead lighting strips (glowing white bars in ceiling ribs)
+  const lightStripMat = new THREE.MeshBasicMaterial({ color: 0xaabbcc });
+  for (let z = -5; z <= 4; z += 3) {
+    const ls = new THREE.Mesh(new THREE.BoxGeometry(14, 0.06, 0.06), lightStripMat);
+    ls.position.set(0, 6.28, z);
+    group.add(ls);
+    // Point light for each strip
+    const pl = new THREE.PointLight(0x8899aa, 0.4, 8);
+    pl.position.set(0, 6.0, z);
+    group.add(pl);
+  }
+
+  // ── BACK WALL — MAIN VIEWPORT WINDOW ──────────────────
+  const backWall = new THREE.Mesh(new THREE.PlaneGeometry(18, 7), darkSteel);
+  backWall.position.set(0, 3.5, -8);
+  group.add(backWall);
+
+  // Large viewport — 3-section panoramic window
+  const winFrameMat = new THREE.MeshPhongMaterial({ color: 0x1e2830, shininess: 100, specular: 0x445566 });
+
+  // Main window outer frame
+  const winFrame = new THREE.Mesh(new THREE.BoxGeometry(9.0, 3.2, 0.25), winFrameMat);
+  winFrame.position.set(-0.5, 3.8, -7.88);
+  group.add(winFrame);
+
+  // 3 window panes
+  for (let i = 0; i < 3; i++) {
+    const paneW = 2.7, paneH = 2.6;
+    const pane = new THREE.Mesh(new THREE.PlaneGeometry(paneW, paneH), glassMat);
+    pane.position.set(-2.7 + i * 2.72, 3.8, -7.75);
+    group.add(pane);
+
+    // Pane frame
+    const pf = new THREE.Mesh(new THREE.BoxGeometry(paneW + 0.08, paneH + 0.08, 0.14), winFrameMat);
+    pf.position.set(-2.7 + i * 2.72, 3.8, -7.82);
+    group.add(pf);
+  }
+
+  // Window vertical dividers
+  for (let i = 0; i < 2; i++) {
+    const div = new THREE.Mesh(new THREE.BoxGeometry(0.14, 2.8, 0.2), chromeMat);
+    div.position.set(-1.36 + i * 2.72, 3.8, -7.80);
+    group.add(div);
+  }
+
+  // ── LEFT WALL — EQUIPMENT RACKS ───────────────────────
+  const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(16, 7), darkSteel);
+  leftWall.rotation.y = Math.PI / 2;
+  leftWall.position.set(-8, 3.5, -1);
+  group.add(leftWall);
+
+  // Equipment racks on left wall
+  for (let r = 0; r < 3; r++) {
+    const rack = new THREE.Mesh(new THREE.BoxGeometry(0.22, 2.8, 1.8), panelMat);
+    rack.rotation.y = Math.PI / 2;
+    rack.position.set(-7.89, 1.4, -4 + r * 3.2);
+    group.add(rack);
+
+    // Rack slots
+    for (let s = 0; s < 5; s++) {
+      const slot = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.28, 1.5), darkSteel);
+      slot.rotation.y = Math.PI / 2;
+      slot.position.set(-7.80, 0.4 + s * 0.5, -4 + r * 3.2);
+      group.add(slot);
+
+      // Status LED (tiny coloured dot)
+      const ledColor = s === 2 ? 0x00ff44 : s === 4 ? 0xff4400 : 0x004488;
+      const led = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.04), new THREE.MeshBasicMaterial({ color: ledColor }));
+      led.position.set(-7.77, 0.4 + s * 0.5, -4.6 + r * 3.2);
+      group.add(led);
+    }
+  }
+
+  // ── RIGHT WALL ─────────────────────────────────────────
+  const rightWall = new THREE.Mesh(new THREE.PlaneGeometry(16, 7), darkSteel);
+  rightWall.rotation.y = -Math.PI / 2;
+  rightWall.position.set(8, 3.5, -1);
+  group.add(rightWall);
+
+  // Structural I-beams along right wall
+  for (let z = -6; z <= 2; z += 4) {
+    // Vertical I-beam
+    const web = new THREE.Mesh(new THREE.BoxGeometry(0.08, 6, 0.22), steelMat);
+    web.rotation.y = -Math.PI / 2;
+    web.position.set(7.7, 3, z);
+    group.add(web);
+    const flangeTop = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.08, 0.22), chromeMat);
+    flangeTop.rotation.y = -Math.PI / 2;
+    flangeTop.position.set(7.7, 6.0, z);
+    group.add(flangeTop);
+    const flangeBot = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.08, 0.22), chromeMat);
+    flangeBot.rotation.y = -Math.PI / 2;
+    flangeBot.position.set(7.7, 0.04, z);
+    group.add(flangeBot);
+  }
+
+  // ── MAIN CONSOLE — LEFT OF ASTRONAUT ──────────────────
+  // Large angled console desk
+  const consoleBase = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.9, 1.2), darkSteel);
+  consoleBase.position.set(-3.5, 0.45, -2.0);
+  group.add(consoleBase);
+
+  const consoleSurface = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.08, 1.2), steelMat);
+  consoleSurface.position.set(-3.5, 0.92, -2.0);
+  consoleSurface.rotation.x = 0.18; // slight angle toward operator
+  group.add(consoleSurface);
+
+  // Console screens (4 monitors)
+  const screenColors = [0x001a44, 0x001133, 0x002244, 0x001122];
+  for (let i = 0; i < 4; i++) {
+    const scr = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.52, 0.04), panelMat);
+    scr.position.set(-4.8 + i * 0.85, 1.55, -2.3);
+    scr.rotation.x = -0.15;
+    group.add(scr);
+
+    // Screen face (glowing)
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(0.64, 0.44), new THREE.MeshBasicMaterial({ color: screenColors[i] }));
+    face.position.set(-4.8 + i * 0.85, 1.55, -2.28);
+    face.rotation.x = -0.15;
+    group.add(face);
+
+    // Soft screen glow
+    const sl = new THREE.PointLight(0x002255, 0.25, 1.5);
+    sl.position.set(-4.8 + i * 0.85, 1.55, -2.1);
+    group.add(sl);
+  }
+
+  // Console keyboard strip
+  const kb = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.04, 0.35), steelMat);
+  kb.position.set(-3.5, 0.97, -1.6);
+  group.add(kb);
+
+  // ── SECONDARY CONSOLE — RIGHT SIDE ────────────────────
+  const con2 = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.1, 0.9), darkSteel);
+  con2.position.set(5.2, 0.55, -1.5);
+  group.add(con2);
+
+  // 2 screens on right console
+  for (let i = 0; i < 2; i++) {
+    const s2 = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.5, 0.04), panelMat);
+    s2.position.set(4.65 + i * 0.9, 1.38, -1.5);
+    s2.rotation.x = -0.2;
+    group.add(s2);
+    const f2 = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.42), new THREE.MeshBasicMaterial({ color: i ? 0x001a22 : 0x001a00 }));
+    f2.position.set(4.65 + i * 0.9, 1.38, -1.48);
+    f2.rotation.x = -0.2;
+    group.add(f2);
+    const sl2 = new THREE.PointLight(i ? 0x002233 : 0x002200, 0.2, 1.2);
+    sl2.position.set(4.65 + i * 0.9, 1.4, -1.2);
+    group.add(sl2);
+  }
+
+  // ── OVERHEAD CONDUIT RUNS ──────────────────────────────
+  const conduitMat = new THREE.MeshPhongMaterial({ color: 0x2a3540, shininess: 40, specular: 0x445566 });
+  // Main conduit bundle along ceiling center
+  for (let c = 0; c < 4; c++) {
+    const conduit = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 16, 6), conduitMat);
+    conduit.rotation.z = Math.PI / 2;
+    conduit.position.set(0, 6.1 + c * 0.1, -3 + c * 0.05);
+    group.add(conduit);
+  }
+
+  // Drop conduits along left wall
+  for (let z = -5; z <= 3; z += 2) {
+    const dc = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 5, 6), conduitMat);
+    dc.position.set(-7.4, 3.5, z);
+    group.add(dc);
+  }
+
+  // ── FLOOR EDGE TRIM ────────────────────────────────────
+  const trimMat = new THREE.MeshPhongMaterial({ color: 0x334455, shininess: 120, specular: 0x667788 });
+  const trimF = new THREE.Mesh(new THREE.BoxGeometry(18, 0.06, 0.06), trimMat);
+  trimF.position.set(0, 0.03, 8);
+  group.add(trimF);
+  const trimB = new THREE.Mesh(new THREE.BoxGeometry(18, 0.06, 0.06), trimMat);
+  trimB.position.set(0, 0.03, -8);
+  group.add(trimB);
+
+  return group;
+}
+
+function buildStarfield() {
+  const sg = new THREE.BufferGeometry();
+  const count = 3000;
+  const sp = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    // Concentrate stars behind the viewport window
+    sp[i*3]   = (Math.random() - 0.5) * 300;
+    sp[i*3+1] = (Math.random() - 0.5) * 200;
+    sp[i*3+2] = -20 - Math.random() * 280;
+  }
+  sg.setAttribute('position', new THREE.BufferAttribute(sp, 3));
+  return new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xddeeff, size: 0.6 }));
+}
 
 function initThree() {
   const cv = document.getElementById('three-canvas');
@@ -495,135 +868,226 @@ function initThree() {
   const H = Math.round(W * 0.62);
   cv.width = W; cv.height = H;
 
-  renderer3 = new THREE.WebGLRenderer({canvas:cv, antialias:true});
+  renderer3 = new THREE.WebGLRenderer({ canvas: cv, antialias: true });
   renderer3.setSize(W, H);
-  renderer3.setClearColor(0x040c18, 1);
+  renderer3.setClearColor(0x060e20, 1);
+  renderer3.shadowMap.enabled = true;
 
   scene3 = new THREE.Scene();
-  cam3 = new THREE.PerspectiveCamera(42, W/H, .1, 500);
-  cam3.position.set(0, 2, 7.5);
+  // No fog — keep astronaut fully visible
+
+  cam3 = new THREE.PerspectiveCamera(48, W / H, 0.1, 500);
+  cam3.position.set(0, 2.2, 5.5);
   cam3.lookAt(0, 1.8, 0);
 
-  aimb = new THREE.AmbientLight(0x223355, 1.0);
+  // Lighting — bright enough to clearly see the astronaut
+  aimb = new THREE.AmbientLight(0xffffff, 1.4);
   scene3.add(aimb);
-  const sun = new THREE.DirectionalLight(0x8ab8ff, 1.3);
-  sun.position.set(4, 6, 4);
-  scene3.add(sun);
-  const rim = new THREE.DirectionalLight(0x004466, .5);
-  rim.position.set(-3, 1, -3);
-  scene3.add(rim);
 
-  const sg = new THREE.BufferGeometry();
-  const sp = new Float32Array(900*3);
-  for(let i=0;i<900;i++){sp[i*3]=(Math.random()-.5)*300;sp[i*3+1]=(Math.random()-.5)*300;sp[i*3+2]=(Math.random()-.5)*300;}
-  sg.setAttribute('position', new THREE.BufferAttribute(sp,3));
-  scene3.add(new THREE.Points(sg, new THREE.PointsMaterial({color:0x99bbdd,size:.35})));
+  // Strong front key light — directly on the astronaut
+  const keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
+  keyLight.position.set(0, 4, 8);
+  scene3.add(keyLight);
 
-  const em = new THREE.MeshPhongMaterial({color:0x1133aa,emissive:0x001133,specular:0x0a2255,shininess:25});
-  const earth = new THREE.Mesh(new THREE.SphereGeometry(9,32,32), em);
-  earth.position.set(-14,-7,-25);
-  scene3.add(earth);
+  // Left fill — cool blue (viewport glow)
+  const fillLight = new THREE.DirectionalLight(0x88bbff, 1.2);
+  fillLight.position.set(-5, 3, 3);
+  scene3.add(fillLight);
 
-  astronaut = new THREE.Group();
-  bodyMat  = new THREE.MeshPhongMaterial({color:0xcccccc,shininess:35});
-  headMat  = new THREE.MeshPhongMaterial({color:0xeeeeee,shininess:80});
-  visorMat = new THREE.MeshPhongMaterial({color:0x3366cc,transparent:true,opacity:.75,shininess:120});
-  const greyM  = () => new THREE.MeshPhongMaterial({color:0xb8b8b8,shininess:20});
-  const darkM  = () => new THREE.MeshPhongMaterial({color:0x888888,shininess:10});
+  // Right fill — warm (console glow)
+  const fillRight = new THREE.DirectionalLight(0xffddaa, 0.8);
+  fillRight.position.set(5, 2, 3);
+  scene3.add(fillRight);
 
-  headMesh = new THREE.Mesh(new THREE.SphereGeometry(.48,20,20), headMat);
-  headMesh.position.y = 3.15;
-  const hring = new THREE.Mesh(new THREE.TorusGeometry(.54,.055,8,32), darkM());
-  hring.position.y = 3.15; hring.rotation.x = Math.PI/2;
-  const vis = new THREE.Mesh(new THREE.SphereGeometry(.30,16,16), visorMat);
-  vis.position.set(0,3.15,.35); vis.scale.x=1.25;
+  // Top overhead strip
+  const stripLight = new THREE.DirectionalLight(0xccddff, 1.0);
+  stripLight.position.set(0, 10, 0);
+  scene3.add(stripLight);
 
-  bodyMesh = new THREE.Mesh(new THREE.CylinderGeometry(.52,.46,1.65,16), bodyMat);
-  bodyMesh.position.y = 2.02;
-  const chest = new THREE.Mesh(new THREE.BoxGeometry(.3,.5,.1), darkM());
-  chest.position.set(0,2.1,.54);
-  const bp = new THREE.Mesh(new THREE.BoxGeometry(.55,.7,.18), greyM());
-  bp.position.set(0,2.0,-.64);
-  const neck = new THREE.Mesh(new THREE.CylinderGeometry(.22,.24,.28,12), greyM());
-  neck.position.y = 2.9;
-  const sp2 = new THREE.Mesh(new THREE.SphereGeometry(.2,10,10), greyM());
-  const spL = sp2.clone(); spL.position.set(-.68,2.7,0);
-  const spR = sp2.clone(); spR.position.set(.68,2.7,0);
+  // Rim light — separates astronaut from background
+  const rimLight = new THREE.DirectionalLight(0x4499ff, 0.9);
+  rimLight.position.set(0, 5, -8);
+  scene3.add(rimLight);
 
-  const mkArm = (side) => {
-    const g = new THREE.Group();
-    const ua = new THREE.Mesh(new THREE.CylinderGeometry(.135,.12,.72,10), bodyMat.clone());
-    ua.position.y = -.36;
-    const fa = new THREE.Mesh(new THREE.CylinderGeometry(.11,.10,.62,10), bodyMat.clone());
-    fa.position.y = -1.0;
-    const glove = new THREE.Mesh(new THREE.SphereGeometry(.135,10,10), greyM());
-    glove.position.y = -1.37;
-    g.add(ua,fa,glove);
-    g.position.set(side*.68, 2.62, 0);
-    g.rotation.z = -side*.28;
-    return g;
-  };
-  const mkLeg = (side) => {
-    const g = new THREE.Group();
-    const th = new THREE.Mesh(new THREE.CylinderGeometry(.17,.15,.82,10), bodyMat.clone());
-    th.position.y = -.41;
-    const sh = new THREE.Mesh(new THREE.CylinderGeometry(.14,.12,.72,10), bodyMat.clone());
-    sh.position.y = -1.18;
-    const bt = new THREE.Mesh(new THREE.BoxGeometry(.24,.15,.32), darkM());
-    bt.position.set(0,-1.62,.05);
-    g.add(th,sh,bt);
-    g.position.set(side*.26, 1.2, 0);
-    return g;
-  };
-  astronaut.add(headMesh,hring,vis,neck,bodyMesh,chest,bp,spL,spR,mkArm(-1),mkArm(1),mkLeg(-1),mkLeg(1));
-  scene3.add(astronaut);
+  // Starfield (visible through the viewport)
+  scene3.add(buildStarfield());
 
-  riskRingMat = new THREE.MeshBasicMaterial({color:0x00e87a,transparent:true,opacity:.55});
-  riskRing = new THREE.Mesh(new THREE.TorusGeometry(1.3,.04,8,80), riskRingMat);
-  riskRing.position.y = 1.6;
+  // Spaceship interior
+  scene3.add(buildSpaceshipInterior());
+
+  // TARS robot
+  tarsGroup = buildTARS();
+  scene3.add(tarsGroup);
+
+  // Risk ring (around astronaut position)
+  riskRingMat = new THREE.MeshBasicMaterial({ color: 0x00e87a, transparent: true, opacity: 0.55 });
+  riskRing = new THREE.Mesh(new THREE.TorusGeometry(1.1, 0.04, 8, 80), riskRingMat);
+  riskRing.position.y = 1.5;
   scene3.add(riskRing);
 
-  scene3.add(new THREE.GridHelper(8,8,0x152844,0x0d1e38));
+  // Placeholder group for astronaut (used for movement before GLB loads)
+  astronaut = new THREE.Group();
+  astronaut.position.set(0, 0, 0);
+  scene3.add(astronaut);
+
+  // bodyMesh stub for pulse (will be replaced by GLB mesh reference)
+  bodyMesh = null;
+
+  // Load GLB
+  loadAstronautGLB();
 
   threeOK = true;
   loopThree();
 }
 
-let _t3last = 0, _simState = null;
-function loopThree(ts=0) {
-  requestAnimationFrame(loopThree);
-  if(!threeOK) return;
-  const dt = Math.min((ts - _t3last)/1000, .05);
-  _t3last = ts;
-  const t = ts * .001;
-  scene3.rotation.y += .003;
-  if (!_simState) { renderer3.render(scene3,cam3); return; }
-  const { fatigue, hr, smsSev, stress, risk, phase } = _simState;
-  if (phase === 'SLEEP') {
-    astronaut.rotation.x += ((-Math.PI/2.2) - astronaut.rotation.x) * .04;
-    astronaut.position.y += (-.8 - astronaut.position.y) * .04;
-    aimb.intensity += (.2 - aimb.intensity) * .03;
-  } else {
-    astronaut.rotation.x += (0 - astronaut.rotation.x) * .04;
-    astronaut.position.y += (0 - astronaut.position.y) * .04;
-    aimb.intensity += (.9 - aimb.intensity) * .03;
+function loadAstronautGLB() {
+  if (!THREE.GLTFLoader) {
+    console.warn('GLTFLoader not available, skipping GLB load');
+    buildFallbackAstronaut();
+    return;
   }
-  const swaySpeed = 1.2 - fatigue*.8;
-  astronaut.rotation.z = Math.sin(t * swaySpeed) * (fatigue * .06 + .01);
-  if (smsSev > .1) {
-    astronaut.rotation.z += Math.sin(t * 4.5) * smsSev * .09;
-    astronaut.position.x = Math.sin(t * 3.8) * smsSev * .06;
-  } else { astronaut.position.x *= .95; }
-  const hrRad = (hr/60) * 2 * Math.PI;
-  const pulse = 1 + Math.sin(t * hrRad) * .015;
-  bodyMesh.scale.x = pulse; bodyMesh.scale.z = pulse;
-  const sc = new THREE.Color();
-  if (stress < .5) sc.lerpColors(new THREE.Color(0xcccccc), new THREE.Color(0xffaa44), stress*2);
-  else sc.lerpColors(new THREE.Color(0xffaa44), new THREE.Color(0xff3333), (stress-.5)*2);
-  bodyMat.color.copy(sc);
-  const rc = risk < .4 ? new THREE.Color(0x00e87a) : risk < .7 ? new THREE.Color(0xffaa00) : new THREE.Color(0xff4040);
-  riskRingMat.color.lerp(rc, .08);
-  riskRing.rotation.y = t * .8;
+
+  const loader = new THREE.GLTFLoader();
+  loader.load(
+    '/Astronaut.glb',
+    function(gltf) {
+      // Remove any existing children
+      while (astronaut.children.length > 0) astronaut.remove(astronaut.children[0]);
+
+      const model = gltf.scene;
+
+      // Auto-scale and center the model
+      const box = new THREE.Box3().setFromObject(model);
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+
+      // Scale to ~2.8 units tall (matching original astronaut height)
+      const targetHeight = 2.8;
+      const scaleFactor = targetHeight / size.y;
+      model.scale.setScalar(scaleFactor);
+
+      // Recompute box after scale
+      box.setFromObject(model);
+      const newCenter = box.getCenter(new THREE.Vector3());
+      const newMin = box.min;
+
+      // Place feet on the floor (y=0)
+      model.position.x = -newCenter.x;
+      model.position.y = -newMin.y;
+      model.position.z = -newCenter.z;
+
+      astronaut.add(model);
+      glbLoaded = true;
+      console.log('Astronaut.glb loaded successfully');
+    },
+    function(progress) {
+      // loading progress
+    },
+    function(error) {
+      console.warn('GLB load error:', error);
+      // Fallback to primitive astronaut
+      buildFallbackAstronaut();
+    }
+  );
+}
+
+function buildFallbackAstronaut() {
+  // Simple capsule-style fallback if GLB fails
+  const mat = new THREE.MeshPhongMaterial({ color: 0xcccccc, shininess: 35 });
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.45, 1.6, 16), mat);
+  body.position.y = 1.8;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.45, 16, 16), new THREE.MeshPhongMaterial({ color: 0xeeeeee, shininess: 80 }));
+  head.position.y = 3.0;
+  astronaut.add(body, head);
+  bodyMesh = body;
+  glbLoaded = true;
+}
+
+let _t3last = 0, _simState = null;
+
+function loopThree(ts = 0) {
+  requestAnimationFrame(loopThree);
+  if (!threeOK) return;
+
+  const dt = Math.min((ts - _t3last) / 1000, 0.05);
+  _t3last = ts;
+  const t = ts * 0.001;
+
+  // Gentle scene rotation — camera orbits slightly
+  const camAngle = Math.sin(t * 0.04) * 0.18;
+  cam3.position.x = Math.sin(camAngle) * 5.8;
+  cam3.position.z = Math.cos(camAngle) * 5.8;
+  cam3.position.y = 2.0 + Math.sin(t * 0.07) * 0.15;
+  cam3.lookAt(0, 1.8, 0);
+
+  // TARS animations
+  if (tarsGroup) {
+    // TARS subtle lean / breathe
+    tarsGroup.rotation.y = -0.5 + Math.sin(t * 0.3) * 0.06;
+    // TARS eye scan line oscillation
+    const scan = tarsGroup.getObjectByName('tars_scan');
+    if (scan) scan.position.y = 0.15 + Math.sin(t * 1.8) * 0.25;
+    // TARS eye color pulse
+    if (tarsScreenMat) {
+      const pulse = 0.7 + Math.sin(t * 2.1) * 0.3;
+      tarsLight.intensity = pulse * 0.9;
+    }
+  }
+
+  if (!_simState) {
+    renderer3.render(scene3, cam3);
+    return;
+  }
+
+  const { fatigue, hr, smsSev, stress, risk, phase } = _simState;
+
+  // Astronaut phase-based pose
+  if (phase === 'SLEEP') {
+    // Tilt forward — sleeping / floating
+    astronaut.rotation.x += ((-Math.PI / 2.4) - astronaut.rotation.x) * 0.04;
+    astronaut.position.y += (-0.6 - astronaut.position.y) * 0.04;
+    aimb.intensity += (0.7 - aimb.intensity) * 0.03;
+  } else {
+    astronaut.rotation.x += (0 - astronaut.rotation.x) * 0.04;
+    astronaut.position.y += (0 - astronaut.position.y) * 0.04;
+    aimb.intensity += (1.4 - aimb.intensity) * 0.03;
+  }
+
+  // Fatigue sway
+  const swaySpeed = 1.2 - fatigue * 0.8;
+  astronaut.rotation.z = Math.sin(t * swaySpeed) * (fatigue * 0.06 + 0.01);
+
+  // SMS (motion sickness) shake
+  if (smsSev > 0.1) {
+    astronaut.rotation.z += Math.sin(t * 4.5) * smsSev * 0.09;
+    astronaut.position.x = Math.sin(t * 3.8) * smsSev * 0.06;
+  } else {
+    astronaut.position.x *= 0.95;
+  }
+
+  // Heartbeat pulse — applied to astronaut root scale (works for GLB too)
+  const hrRad = (hr / 60) * 2 * Math.PI;
+  const pulse = 1 + Math.sin(t * hrRad) * 0.012;
+  astronaut.scale.x = pulse;
+  astronaut.scale.z = pulse;
+
+  // Stress → TARS eye color shifts
+  if (tarsScreenMat) {
+    if (stress > 0.7) {
+      tarsScreenMat.color.setHex(0xff4040);
+    } else if (stress > 0.4) {
+      tarsScreenMat.color.setHex(0xffaa00);
+    } else {
+      tarsScreenMat.color.setHex(0x00d4ff);
+    }
+  }
+
+  // Risk ring
+  const rc = risk < 0.4 ? new THREE.Color(0x00e87a) : risk < 0.7 ? new THREE.Color(0xffaa00) : new THREE.Color(0xff4040);
+  riskRingMat.color.lerp(rc, 0.08);
+  riskRing.position.x = astronaut.position.x;
+  riskRing.rotation.y = t * 0.8;
+
   renderer3.render(scene3, cam3);
 }
 
@@ -664,7 +1128,7 @@ function pushChart(key, label, value) {
 }
 
 // ════════════════════════════════════════════════════════
-// PLAYBACK ENGINE — replays API result data
+// PLAYBACK ENGINE
 // ════════════════════════════════════════════════════════
 
 let playState = { running:false, paused:false, idx:0, lastTs:0 };
@@ -718,17 +1182,15 @@ function playLoop(ts) {
   const dt = Math.min((ts - playState.lastTs)/1000, .1) * speed;
   playState.lastTs = ts;
 
-  // Advance one or more data indices per frame based on speed
   const stepsPerSec = Math.max(0.01, (speed * 4.8) / 60);
   playState.idx = Math.min(playState.idx + stepsPerSec, simResults.state.time.length - 1);
 
   const state  = simResults.state;
-  const idx = Math.floor(playState.idx); 
+  const idx = Math.floor(playState.idx);
   const total  = state.time.length;
   const timeH  = state.time[idx] / 60;
 
-  // Mission clock
-  missionSecs += dt * 3600; // simulate time passing
+  missionSecs += dt * 3600;
   const ms = Math.floor(timeH * 3600);
   document.getElementById('clock').textContent =
     `T+${String(Math.floor(ms/3600)).padStart(2,'0')}:${String(Math.floor((ms%3600)/60)).padStart(2,'0')}:${String(ms%60).padStart(2,'0')}`;
@@ -740,13 +1202,10 @@ function playLoop(ts) {
   const spo2 = state.spo2 ? state.spo2[idx] : 98;
   const phase = getPhaseFromTime(timeH);
 
-  // Composite risk (normalised)
   const rsk = Math.min(1, (fat/10)*0.5 + (str||0)*0.3 + Math.max(0, (1-slp))*0.2);
 
-  // 3D state
   _simState = { fatigue: fat/10, hr, smsSev: 0, stress: str||0, risk: rsk, phase };
 
-  // Display
   document.getElementById('cyc-disp').textContent = `STEP: ${idx+1} / ${total}`;
   document.getElementById('phase-name').textContent = phase;
 
@@ -758,7 +1217,6 @@ function playLoop(ts) {
   };
   document.getElementById('phase-disp').textContent = phaseLabels[phase] || '';
 
-  // Vitals
   const fatClass = fat > 7 ? 'R' : fat > 5 ? 'W' : '';
   const hrClass  = hr > 100 ? 'W' : hr > 115 ? 'R' : '';
   const spo2C    = spo2 < 94 ? 'R' : spo2 < 97 ? 'W' : '';
@@ -767,13 +1225,11 @@ function playLoop(ts) {
   setVital('str',  (str||0).toFixed(2), (str||0) > .6 ? 'W' : '');
   setVital('spo2', (+spo2).toFixed(1), spo2C);
 
-  // Risk badge
   const rb = document.getElementById('risk-badge');
   if (rsk >= .7)      { rb.textContent='CRITICAL'; rb.className='R'; }
   else if (rsk >= .4) { rb.textContent='ELEVATED'; rb.className='Y'; }
   else                { rb.textContent='NOMINAL';  rb.className=''; }
 
-  // Charts — push every 4 steps
   if (idx % 4 === 0) {
     const lbl = `${timeH.toFixed(0)}h`;
     pushChart('fat', lbl, fat);
@@ -782,7 +1238,6 @@ function playLoop(ts) {
     pushChart('rsk', lbl, rsk);
   }
 
-  // Timeline day pointer
   tlActivate(Math.floor(timeH / 24));
 
   if (playState.idx >= total - 1) {
@@ -799,7 +1254,7 @@ function setVital(id, val, cls) {
 }
 
 // ════════════════════════════════════════════════════════
-// MISSION END — uses /summary data
+// MISSION END
 // ════════════════════════════════════════════════════════
 
 function endMission() {
@@ -820,7 +1275,6 @@ function showMC() {
   const fat   = state.fatigue;
   const slp   = state.sleep_quality;
 
-  // Subsample to ~60 points for display
   const step = Math.max(1, Math.floor(times.length / 60));
   const xlbl = [], fatTraj = [], slpTraj = [];
   for (let i = 0; i < times.length; i += step) {
@@ -845,7 +1299,6 @@ function showMC() {
               y:{min:0,max:1,ticks:{color:'#7aa8c8',font:{size:8}},grid:{color:'#152844'}}}}
   });
 
-  // Stats from summary
   if (simSummary) {
     const m  = simSummary.metrics;
     const ra = simSummary.risk_assessment;
@@ -901,10 +1354,6 @@ sliders.forEach(([id,lid,fmt])=>{
 });
 
 // ════════════════════════════════════════════════════════
-// INIT
-// ════════════════════════════════════════════════════════
-
-// ════════════════════════════════════════════════════════
 // LOAD EXISTING SIMULATION
 // ════════════════════════════════════════════════════════
 
@@ -930,7 +1379,6 @@ async function refreshRunList() {
   list.innerHTML = '';
 
   try {
-    // Try /api/simulation/list first, fall back to /api/data/runs
     let runs = [];
     try {
       const r = await apiGet('/api/simulation/list');
@@ -940,7 +1388,6 @@ async function refreshRunList() {
         const r = await apiGet('/api/data/runs');
         runs = r.runs || r || [];
       } catch {
-        // Try to get IDs from runs endpoint
         const r = await apiGet('/api/simulation/runs');
         runs = r.runs || r || [];
       }
@@ -954,7 +1401,6 @@ async function refreshRunList() {
       return;
     }
 
-    // Sort: newest first (by run_id string which contains timestamp-like hash, or use created_at)
     runs.sort((a,b) => {
       const ta = a.created_at || a.run_id || '';
       const tb = b.created_at || b.run_id || '';
@@ -1005,7 +1451,6 @@ async function confirmLoad() {
   document.getElementById('api-run-id').textContent = currentRunId;
 
   try {
-    // If run is still in progress, poll until complete
     const status = await apiGet(`/api/simulation/status/${currentRunId}`);
     if (status.status === 'running' || status.status === 'pending') {
       setApiStatus('busy', `Run still in progress — polling...`, 50, currentRunId);
