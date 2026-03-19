@@ -719,11 +719,11 @@ function playLoop(ts) {
   playState.lastTs = ts;
 
   // Advance one or more data indices per frame based on speed
-  const stepsPerSec = Math.max(1, Math.round(speed * 1));
+  const stepsPerSec = Math.max(0.01, (speed * 4.8) / 60);
   playState.idx = Math.min(playState.idx + stepsPerSec, simResults.state.time.length - 1);
 
   const state  = simResults.state;
-  const idx    = playState.idx;
+  const idx = Math.floor(playState.idx); 
   const total  = state.time.length;
   const timeH  = state.time[idx] / 60;
 
@@ -891,7 +891,7 @@ const sliders = [
   ['ctrl-hr',  'lbl-hr',  v=>`${v} bpm`],
   ['ctrl-sq',  'lbl-sq',  v=>(v/10).toFixed(2)],
   ['ctrl-fat', 'lbl-fat', v=>(v/10).toFixed(1)],
-  ['ctrl-spd', 'lbl-spd', v=>(v/3).toFixed(1)+'×'],
+  ['ctrl-spd', 'lbl-spd', v=>`${(10/(v/3)).toFixed(0)}s/day`],
 ];
 sliders.forEach(([id,lid,fmt])=>{
   const el = document.getElementById(id);

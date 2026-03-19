@@ -15,6 +15,9 @@ import time
 from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass, field
+import os
+from dotenv import load_dotenv
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +64,7 @@ class BioGearsScenarioRunner:
 
     def __init__(
         self,
-        bg_cli_path: str = r"C:\Users\AbhiDS\biogears\bin",
+        bg_cli_path: str = os.environ.get("BIOGEARS_PATH"),
         working_dir: Optional[str] = None,
         timeout_seconds: int = 300,
     ):
