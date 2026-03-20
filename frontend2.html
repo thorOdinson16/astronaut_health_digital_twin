@@ -129,6 +129,9 @@ input[type=range]{width:100%;height:2px;accent-color:var(--cyan);cursor:pointer}
 #load-modal-btns .btn{flex:1;margin:0}
 #load-refresh-spinner{font-size:8px;color:var(--text);letter-spacing:1px;height:14px;text-align:center}
 
+/* Zoom hint */
+#zoom-hint{font-size:8px;color:rgba(120,168,200,.5);letter-spacing:2px;text-align:center;padding:2px 0}
+
 /* Scrollbar */
 ::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:var(--panel)}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
 </style>
@@ -183,8 +186,9 @@ input[type=range]{width:100%;height:2px;accent-color:var(--cyan);cursor:pointer}
 
   <!-- 3D TWIN -->
   <div class="panel" id="panel-twin">
-    <div class="ptitle" style="text-align:center">3D ASTRONAUT DIGITAL TWIN</div>
+    <div class="ptitle" style="text-align:center">ENDURANCE · ASTRONAUT DIGITAL TWIN</div>
     <canvas id="three-canvas"></canvas>
+    <div id="zoom-hint">SCROLL TO ZOOM · DRAG TO ORBIT · DBL-CLICK RESET</div>
     <div id="phase-disp">◈ AWAITING MISSION INITIALIZATION</div>
     <div id="vitals">
       <div class="vcard"><div class="vlabel">HEART RATE</div><div class="vval" id="v-hr">—</div><div class="vunit">bpm</div></div>
@@ -258,7 +262,6 @@ input[type=range]{width:100%;height:2px;accent-color:var(--cyan);cursor:pointer}
 
 <!-- Three.js r128 + GLTFLoader via CDN -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<!-- GLTFLoader r128 from jsDelivr -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script>
@@ -483,429 +486,431 @@ function populateStatusPanel() {
 }
 
 // ════════════════════════════════════════════════════════
-// THREE.JS — INTERSTELLAR SPACESHIP SCENE + GLB ASTRONAUT
+// THREE.JS — ENDURANCE SPACESHIP + HABITAT INTERIOR
 // ════════════════════════════════════════════════════════
 
 let renderer3, scene3, cam3, astronaut, aimb;
 let tarsGroup, tarsLight, tarsScreenMat;
 let bodyMesh, bodyMat;
 let riskRing, riskRingMat;
+let enduranceRing;          // the rotating ring
+let habitatPod;             // the habitat module astronaut lives in
 let threeOK = false;
 let glbLoaded = false;
 
-// ── CAMERA ORBIT STATE ──────────────────────────────────
+// Camera orbit state
 const camState = {
-  radius: 5.8,      // distance from target
-  theta: 0,         // horizontal angle (auto-rotates when not dragging)
-  phi: 0.38,        // vertical angle (radians from equator)
-  targetY: 1.8,     // look-at Y
+  radius: 55,           // start far out to see whole ship
+  theta: 0.4,
+  phi: 0.22,
+  targetY: 0,
   isDragging: false,
   lastX: 0, lastY: 0,
   autoRotate: true,
-  minRadius: 2.0,
-  maxRadius: 18.0,
-  // touch pinch
+  minRadius: 2.5,       // zoom in very close to see astronaut
+  maxRadius: 80,        // zoom out to see full Endurance
   lastPinchDist: null,
 };
 
+// ── TARS ROBOT ────────────────────────────────────────────
 function buildTARS() {
   const group = new THREE.Group();
-
-  const bodyMat = new THREE.MeshPhongMaterial({
-    color: 0x2a2d30, shininess: 180, specular: 0x999999
-  });
-  const darkMat = new THREE.MeshPhongMaterial({
-    color: 0x111314, shininess: 40, specular: 0x333333
-  });
-  const chromeMat = new THREE.MeshPhongMaterial({
-    color: 0x777c80, shininess: 255, specular: 0xffffff
-  });
+  const bodyMat = new THREE.MeshPhongMaterial({ color: 0x2a2d30, shininess: 180, specular: 0x999999 });
+  const darkMat = new THREE.MeshPhongMaterial({ color: 0x111314, shininess: 40, specular: 0x333333 });
+  const chromeMat = new THREE.MeshPhongMaterial({ color: 0x777c80, shininess: 255, specular: 0xffffff });
 
   const panelW = 0.28, panelH = 1.90, panelD = 0.22, gap = 0.038;
   const totalW = 4 * panelW + 3 * gap;
   const startX = -totalW / 2 + panelW / 2;
 
-  // ───────── PANELS ─────────
   for (let i = 0; i < 4; i++) {
     const px = startX + i * (panelW + gap);
-
     const panelGroup = new THREE.Group();
     panelGroup.position.set(px, 0, 0);
 
-    // Main panel
-    const panel = new THREE.Mesh(
-      new THREE.BoxGeometry(panelW, panelH, panelD),
-      bodyMat.clone()
-    );
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(panelW, panelH, panelD), bodyMat.clone());
     panel.position.set(0, panelH / 2, 0);
     panelGroup.add(panel);
 
-    // Face
-    const face = new THREE.Mesh(
-      new THREE.BoxGeometry(panelW - 0.04, panelH - 0.04, 0.01),
-      darkMat
-    );
+    const face = new THREE.Mesh(new THREE.BoxGeometry(panelW - 0.04, panelH - 0.04, 0.01), darkMat);
     face.position.set(0, panelH / 2, panelD / 2 + 0.005);
     panelGroup.add(face);
 
-    // Caps
-    const topCap = new THREE.Mesh(
-      new THREE.BoxGeometry(panelW + 0.01, 0.04, panelD + 0.01),
-      chromeMat
-    );
+    const topCap = new THREE.Mesh(new THREE.BoxGeometry(panelW + 0.01, 0.04, panelD + 0.01), chromeMat);
     topCap.position.set(0, panelH + 0.02, 0);
     panelGroup.add(topCap);
 
-    const botCap = new THREE.Mesh(
-      new THREE.BoxGeometry(panelW + 0.01, 0.04, panelD + 0.01),
-      chromeMat
-    );
+    const botCap = new THREE.Mesh(new THREE.BoxGeometry(panelW + 0.01, 0.04, panelD + 0.01), chromeMat);
     botCap.position.set(0, -0.02, 0);
     panelGroup.add(botCap);
 
-    // Rails
     const railGeo = new THREE.BoxGeometry(0.015, panelH, panelD + 0.02);
     const railL = new THREE.Mesh(railGeo, chromeMat);
     const railR = new THREE.Mesh(railGeo, chromeMat);
-
     railL.position.set(-panelW / 2 - 0.007, panelH / 2, 0);
     railR.position.set(panelW / 2 + 0.007, panelH / 2, 0);
-
     panelGroup.add(railL, railR);
 
-    // Score lines
     for (let s = 0; s < 5; s++) {
-      const scoreY = 0.3 + s * 0.32;
-      const score = new THREE.Mesh(
-        new THREE.BoxGeometry(panelW - 0.06, 0.008, 0.012),
-        chromeMat
-      );
-      score.position.set(0, scoreY, panelD / 2 + 0.006);
+      const score = new THREE.Mesh(new THREE.BoxGeometry(panelW - 0.06, 0.008, 0.012), chromeMat);
+      score.position.set(0, 0.3 + s * 0.32, panelD / 2 + 0.006);
       panelGroup.add(score);
     }
 
-    // 🔥 Rotate middle panels (TARS-style articulation)
-    if (i === 1) panelGroup.rotation.x = Math.PI / 18;    // +10°
-    if (i === 2) panelGroup.rotation.x = -Math.PI / 18;   // -10°
-
+    if (i === 1) panelGroup.rotation.x = Math.PI / 18;
+    if (i === 2) panelGroup.rotation.x = -Math.PI / 18;
     group.add(panelGroup);
   }
 
-  // ───────── EYE ─────────
   const eyeY = panelH * 0.62;
   const eyeW = totalW + 0.02;
 
-  const eyeSlot = new THREE.Mesh(
-    new THREE.BoxGeometry(eyeW, 0.09, 0.04),
-    darkMat
-  );
+  const eyeSlot = new THREE.Mesh(new THREE.BoxGeometry(eyeW, 0.09, 0.04), darkMat);
   eyeSlot.position.set(0, eyeY, panelD / 2 - 0.01);
   group.add(eyeSlot);
 
   tarsScreenMat = new THREE.MeshBasicMaterial({ color: 0x00c8ff });
-  const eye = new THREE.Mesh(
-    new THREE.BoxGeometry(eyeW - 0.04, 0.045, 0.02),
-    tarsScreenMat
-  );
+  const eye = new THREE.Mesh(new THREE.BoxGeometry(eyeW - 0.04, 0.045, 0.02), tarsScreenMat);
   eye.position.set(0, eyeY, panelD / 2 + 0.01);
   group.add(eye);
 
-  const glowMat = new THREE.MeshBasicMaterial({
-    color: 0x004466, transparent: true, opacity: 0.4
-  });
-  const eyeGlow = new THREE.Mesh(
-    new THREE.BoxGeometry(eyeW + 0.1, 0.18, 0.005),
-    glowMat
-  );
+  const glowMat = new THREE.MeshBasicMaterial({ color: 0x004466, transparent: true, opacity: 0.4 });
+  const eyeGlow = new THREE.Mesh(new THREE.BoxGeometry(eyeW + 0.1, 0.18, 0.005), glowMat);
   eyeGlow.position.set(0, eyeY, panelD / 2 + 0.02);
   group.add(eyeGlow);
 
-  const scanMat = new THREE.MeshBasicMaterial({
-    color: 0x00ffee, transparent: true, opacity: 0.7
-  });
-  const scan = new THREE.Mesh(
-    new THREE.BoxGeometry(eyeW - 0.06, 0.012, 0.015),
-    scanMat
-  );
+  const scanMat = new THREE.MeshBasicMaterial({ color: 0x00ffee, transparent: true, opacity: 0.7 });
+  const scan = new THREE.Mesh(new THREE.BoxGeometry(eyeW - 0.06, 0.012, 0.015), scanMat);
   scan.position.set(0, eyeY - 0.3, panelD / 2 + 0.015);
   scan.name = 'tars_scan';
   group.add(scan);
 
-  // ───────── BASE ─────────
-  const basePlate = new THREE.Mesh(
-    new THREE.BoxGeometry(totalW + 0.12, 0.06, panelD + 0.08),
-    chromeMat
-  );
+  const chromeMat2 = new THREE.MeshPhongMaterial({ color: 0x777c80, shininess: 255, specular: 0xffffff });
+  const basePlate = new THREE.Mesh(new THREE.BoxGeometry(totalW + 0.12, 0.06, panelD + 0.08), chromeMat2);
   basePlate.position.set(0, -0.03, 0);
   group.add(basePlate);
 
-  const footMat = new THREE.MeshPhongMaterial({
-    color: 0x1a1d1f, shininess: 60, specular: 0x555555
-  });
-
+  const footMat = new THREE.MeshPhongMaterial({ color: 0x1a1d1f, shininess: 60, specular: 0x555555 });
   const footL = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.18, 0.30), footMat);
   const footR = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.18, 0.30), footMat);
-
   footL.position.set(-totalW / 2 + 0.11, -0.09, 0.04);
   footR.position.set(totalW / 2 - 0.11, -0.09, 0.04);
-
   group.add(footL, footR);
 
-  // ───────── LIGHT ─────────
   tarsLight = new THREE.PointLight(0x00c8ff, 1.2, 3.5);
   tarsLight.position.set(0, eyeY, panelD / 2 + 0.8);
   group.add(tarsLight);
 
-  // ───────── FINAL POSITION ─────────
-  group.position.set(2.8, 0.18, -0.8);
-  group.rotation.y = -0.65;
-
   return group;
 }
 
-function buildSpaceshipInterior() {
-  const group = new THREE.Group();
+// ── ENDURANCE SPACESHIP ───────────────────────────────────
+// Ring of 12 habitat modules connected by radial spokes to a central hub
+function buildEndurance() {
+  const shipGroup = new THREE.Group();
 
-  // ── MATERIALS ──────────────────────────────────────────
-  const steelMat   = new THREE.MeshPhongMaterial({ color: 0x1c2128, shininess: 60, specular: 0x334455 });
-  const darkSteel  = new THREE.MeshPhongMaterial({ color: 0x0e1218, shininess: 30, specular: 0x223344 });
-  const panelMat   = new THREE.MeshPhongMaterial({ color: 0x161c22, shininess: 20, specular: 0x1a2233 });
-  const chromeMat  = new THREE.MeshPhongMaterial({ color: 0x445566, shininess: 200, specular: 0xaabbcc });
-  const glowMat    = new THREE.MeshBasicMaterial({ color: 0x001833 });
-  const floorMat   = new THREE.MeshPhongMaterial({ color: 0x111820, shininess: 80, specular: 0x223344 });
-  const ceilingMat = new THREE.MeshPhongMaterial({ color: 0x0c1018, shininess: 10 });
-  const glassMat   = new THREE.MeshPhongMaterial({ color: 0x000d1a, transparent: true, opacity: 0.55, shininess: 300, specular: 0x5599cc });
+  // Materials
+  const hullMat   = new THREE.MeshPhongMaterial({ color: 0xaab8c2, shininess: 90, specular: 0x445566 });
+  const darkMat   = new THREE.MeshPhongMaterial({ color: 0x2a3540, shininess: 40, specular: 0x223344 });
+  const chromeMat = new THREE.MeshPhongMaterial({ color: 0x667788, shininess: 200, specular: 0xaabbcc });
+  const panelMat  = new THREE.MeshPhongMaterial({ color: 0x8899aa, shininess: 60, specular: 0x334455 });
+  const glassMat  = new THREE.MeshPhongMaterial({ color: 0x001a33, transparent: true, opacity: 0.55, shininess: 300, specular: 0x5599cc });
+  const thrusterMat = new THREE.MeshPhongMaterial({ color: 0x334455, shininess: 120, specular: 0x8899aa });
+  const glowMat   = new THREE.MeshBasicMaterial({ color: 0x003366, transparent: true, opacity: 0.4 });
 
-  // ── FLOOR ──────────────────────────────────────────────
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(18, 16), floorMat);
-  floor.rotation.x = -Math.PI / 2;
-  floor.position.y = 0;
-  group.add(floor);
+  const RING_RADIUS = 22;
+  const N_MODULES   = 12;
 
-  // Floor grating grid — two tone
-  const grid1 = new THREE.GridHelper(18, 36, 0x1a2a3a, 0x0f1a24);
-  grid1.position.y = 0.002;
-  group.add(grid1);
+  // ── CENTRAL HUB ──────────────────────────────────────
+  // Main central cylinder
+  const hubBody = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.2, 5.0, 24), hullMat);
+  shipGroup.add(hubBody);
 
-  // Floor panel seams (horizontal bolted sections)
-  for (let z = -6; z <= 6; z += 2) {
-    const seam = new THREE.Mesh(new THREE.BoxGeometry(18, 0.015, 0.04), chromeMat);
-    seam.position.set(0, 0.008, z);
-    group.add(seam);
+  // Hub caps
+  const hubCapT = new THREE.Mesh(new THREE.CylinderGeometry(3.4, 3.2, 0.4, 24), chromeMat);
+  hubCapT.position.y = 2.7;
+  shipGroup.add(hubCapT);
+  const hubCapB = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.4, 0.4, 24), chromeMat);
+  hubCapB.position.y = -2.7;
+  shipGroup.add(hubCapB);
+
+  // Hub docking ports (6 around equator)
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    const port = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 1.2, 12), chromeMat);
+    port.position.set(Math.cos(a) * 3.8, 0, Math.sin(a) * 3.8);
+    port.rotation.z = Math.PI / 2;
+    port.rotation.y = a;
+    shipGroup.add(port);
+
+    // Port collar
+    const collar = new THREE.Mesh(new THREE.TorusGeometry(0.7, 0.12, 8, 16), darkMat);
+    collar.position.set(Math.cos(a) * 4.4, 0, Math.sin(a) * 4.4);
+    collar.rotation.y = a;
+    shipGroup.add(collar);
   }
 
-  // ── CEILING ────────────────────────────────────────────
-  const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(18, 16), ceilingMat);
-  ceiling.rotation.x = Math.PI / 2;
-  ceiling.position.y = 6.5;
-  group.add(ceiling);
+  // Hub top antenna tower
+  const antBase = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.6, 1.5, 8), darkMat);
+  antBase.position.y = 3.6;
+  shipGroup.add(antBase);
+  const antMid = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.4, 2.5, 8), darkMat);
+  antMid.position.y = 5.6;
+  shipGroup.add(antMid);
+  const antTip = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.15, 1.8, 6), chromeMat);
+  antTip.position.y = 7.5;
+  shipGroup.add(antTip);
+  // Dish
+  const dish = new THREE.Mesh(new THREE.SphereGeometry(1.4, 16, 8, 0, Math.PI*2, 0, Math.PI/2), panelMat);
+  dish.position.y = 8.6;
+  shipGroup.add(dish);
+  // Dish support
+  const dSup = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 1.0, 6), chromeMat);
+  dSup.position.y = 8.1;
+  shipGroup.add(dSup);
 
-  // Ceiling structural ribs (curved cross-beams across width)
-  for (let z = -5; z <= 4; z += 3) {
-    const rib = new THREE.Mesh(new THREE.BoxGeometry(18, 0.18, 0.22), steelMat);
-    rib.position.set(0, 6.35, z);
-    group.add(rib);
-    // Rib flanges
-    const flangeL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.32, 0.22), chromeMat);
-    const flangeR = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.32, 0.22), chromeMat);
-    flangeL.position.set(-8.94, 6.2, z);
-    flangeR.position.set(8.94, 6.2, z);
-    group.add(flangeL, flangeR);
+  // ── SPOKES (12 radial struts connecting hub to ring) ──
+  for (let i = 0; i < N_MODULES; i++) {
+    const angle = (i / N_MODULES) * Math.PI * 2;
+    const spokeGroup = new THREE.Group();
+    spokeGroup.rotation.y = angle;
+
+    // Main spoke
+    const spoke = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, RING_RADIUS - 4.5, 8), darkMat);
+    spoke.position.set(0, 0, (RING_RADIUS - 4.5) / 2 + 3.2);
+    spoke.rotation.x = Math.PI / 2;
+    spokeGroup.add(spoke);
+
+    // Spoke detail — thin parallel truss rods
+    for (let s = -1; s <= 1; s += 2) {
+      const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, RING_RADIUS - 5, 6), chromeMat);
+      rod.position.set(s * 0.35, 0, (RING_RADIUS - 5) / 2 + 3.2);
+      rod.rotation.x = Math.PI / 2;
+      spokeGroup.add(rod);
+    }
+
+    // Spoke junction at hub
+    const junct = new THREE.Mesh(new THREE.SphereGeometry(0.45, 8, 8), chromeMat);
+    junct.position.set(0, 0, 3.5);
+    spokeGroup.add(junct);
+
+    shipGroup.add(spokeGroup);
   }
 
-  // Overhead lighting strips (glowing white bars in ceiling ribs)
-  const lightStripMat = new THREE.MeshBasicMaterial({ color: 0xaabbcc });
-  for (let z = -5; z <= 4; z += 3) {
-    const ls = new THREE.Mesh(new THREE.BoxGeometry(14, 0.06, 0.06), lightStripMat);
-    ls.position.set(0, 6.28, z);
-    group.add(ls);
-    // Point light for each strip
-    const pl = new THREE.PointLight(0x8899aa, 0.4, 8);
-    pl.position.set(0, 6.0, z);
-    group.add(pl);
+  // ── RING CORRIDOR (torus connecting all modules) ──────
+  const ringTube = new THREE.Mesh(
+    new THREE.TorusGeometry(RING_RADIUS, 0.55, 16, 96),
+    darkMat
+  );
+  ringTube.rotation.x = Math.PI / 2;
+  shipGroup.add(ringTube);
+
+  // Ring reinforcement bands every 30°
+  for (let i = 0; i < 12; i++) {
+    const ba = (i / 12) * Math.PI * 2;
+    const band = new THREE.Mesh(new THREE.TorusGeometry(RING_RADIUS, 0.65, 6, 6, Math.PI / 8), chromeMat);
+    band.rotation.x = Math.PI / 2;
+    band.rotation.z = ba;
+    shipGroup.add(band);
   }
 
-  // ── BACK WALL — MAIN VIEWPORT WINDOW ──────────────────
-  const backWall = new THREE.Mesh(new THREE.PlaneGeometry(18, 7), darkSteel);
-  backWall.position.set(0, 3.5, -8);
-  group.add(backWall);
+  // ── HABITAT MODULES (12 box-shaped pods on the ring) ──
+  for (let i = 0; i < N_MODULES; i++) {
+    const angle = (i / N_MODULES) * Math.PI * 2;
+    const modGroup = new THREE.Group();
+    modGroup.rotation.y = angle;
 
-  // Large viewport — 3-section panoramic window
-  const winFrameMat = new THREE.MeshPhongMaterial({ color: 0x1e2830, shininess: 100, specular: 0x445566 });
+    const mx = 0, my = 0, mz = RING_RADIUS;
 
-  // Main window outer frame
-  const winFrame = new THREE.Mesh(new THREE.BoxGeometry(9.0, 3.2, 0.25), winFrameMat);
-  winFrame.position.set(-0.5, 3.8, -7.88);
-  group.add(winFrame);
+    // Main box body
+    const box = new THREE.Mesh(new THREE.BoxGeometry(3.8, 2.6, 4.2), hullMat.clone());
+    box.position.set(mx, my, mz);
+    modGroup.add(box);
 
-  // 3 window panes
+    // Module face panel (darker)
+    const face = new THREE.Mesh(new THREE.BoxGeometry(3.7, 2.4, 0.1), panelMat);
+    face.position.set(mx, my, mz + 2.15);
+    modGroup.add(face);
+
+    // Viewport windows (2 per module on outer face)
+    for (let w = -1; w <= 1; w += 2) {
+      const win = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.65, 0.08), glassMat);
+      win.position.set(mx + w * 1.1, my + 0.3, mz + 2.22);
+      modGroup.add(win);
+
+      // Window frame
+      const wf = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.78, 0.05), chromeMat);
+      wf.position.set(mx + w * 1.1, my + 0.3, mz + 2.20);
+      modGroup.add(wf);
+
+      // Window glow (interior light bleeding out)
+      const wg = new THREE.Mesh(new THREE.PlaneGeometry(0.85, 0.60), glowMat);
+      wg.position.set(mx + w * 1.1, my + 0.3, mz + 2.24);
+      modGroup.add(wg);
+    }
+
+    // Module caps (end plates)
+    const capL = new THREE.Mesh(new THREE.BoxGeometry(3.8, 2.6, 0.18), chromeMat);
+    capL.position.set(mx, my, mz - 2.19);
+    modGroup.add(capL);
+    const capR = new THREE.Mesh(new THREE.BoxGeometry(3.8, 2.6, 0.18), chromeMat);
+    capR.position.set(mx, my, mz + 2.19);
+    modGroup.add(capR);
+
+    // Bottom equipment bay (darker box under main hull)
+    const eqBay = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.7, 3.6), darkMat);
+    eqBay.position.set(mx, my - 1.65, mz);
+    modGroup.add(eqBay);
+
+    // Radiator panels on sides (solar/thermal)
+    for (let s = -1; s <= 1; s += 2) {
+      const rad = new THREE.Mesh(new THREE.BoxGeometry(0.05, 2.0, 3.0), panelMat);
+      rad.position.set(mx + s * 2.1, my, mz);
+      modGroup.add(rad);
+
+      // Radiator ribs
+      for (let r = 0; r < 4; r++) {
+        const rib = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.06, 3.0), chromeMat);
+        rib.position.set(mx + s * 2.12, my - 0.7 + r * 0.5, mz);
+        modGroup.add(rib);
+      }
+    }
+
+    // Identify module 0 as the primary habitat (where astronaut is)
+    if (i === 0) habitatPod = modGroup;
+
+    shipGroup.add(modGroup);
+  }
+
+  // ── PROPULSION SECTION (3 large engine pods at back) ──
+  const ENGINE_Y = -5.5;
   for (let i = 0; i < 3; i++) {
-    const paneW = 2.7, paneH = 2.6;
-    const pane = new THREE.Mesh(new THREE.PlaneGeometry(paneW, paneH), glassMat);
-    pane.position.set(-2.7 + i * 2.72, 3.8, -7.75);
-    group.add(pane);
+    const ea = (i / 3) * Math.PI * 2;
+    const ex = Math.cos(ea) * 5.5;
+    const ez = Math.sin(ea) * 5.5;
 
-    // Pane frame
-    const pf = new THREE.Mesh(new THREE.BoxGeometry(paneW + 0.08, paneH + 0.08, 0.14), winFrameMat);
-    pf.position.set(-2.7 + i * 2.72, 3.8, -7.82);
-    group.add(pf);
+    // Engine pod
+    const pod = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.3, 6.0, 12), darkMat);
+    pod.position.set(ex, ENGINE_Y, ez);
+    shipGroup.add(pod);
+
+    // Nozzle
+    const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 0.6, 1.2, 12), thrusterMat);
+    nozzle.position.set(ex, ENGINE_Y - 3.7, ez);
+    shipGroup.add(nozzle);
+
+    // Engine glow
+    const egMat = new THREE.MeshBasicMaterial({ color: 0x003366, transparent: true, opacity: 0.35 });
+    const eGlow = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 0.3, 12), egMat);
+    eGlow.position.set(ex, ENGINE_Y - 4.5, ez);
+    shipGroup.add(eGlow);
+
+    // Connection to hub
+    const conn = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 4.5, 6), darkMat);
+    conn.position.set(ex * 0.5, ENGINE_Y, ez * 0.5);
+    conn.rotation.z = Math.PI / 2;
+    conn.rotation.y = ea;
+    shipGroup.add(conn);
   }
 
-  // Window vertical dividers
-  for (let i = 0; i < 2; i++) {
-    const div = new THREE.Mesh(new THREE.BoxGeometry(0.14, 2.8, 0.2), chromeMat);
-    div.position.set(-1.36 + i * 2.72, 3.8, -7.80);
-    group.add(div);
-  }
+  // ── SOLAR ARRAYS (2 large panels top) ──────────────────
+  for (let s = -1; s <= 1; s += 2) {
+    const saSupport = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 8, 6), chromeMat);
+    saSupport.position.set(s * 5.5, 4.5, 0);
+    saSupport.rotation.z = Math.PI / 2;
+    shipGroup.add(saSupport);
 
-  // ── LEFT WALL — EQUIPMENT RACKS ───────────────────────
-  const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(16, 7), darkSteel);
-  leftWall.rotation.y = Math.PI / 2;
-  leftWall.position.set(-8, 3.5, -1);
-  group.add(leftWall);
+    const solarPanel = new THREE.Mesh(new THREE.BoxGeometry(6.5, 0.06, 2.8), panelMat);
+    solarPanel.position.set(s * 9.5, 4.5, 0);
+    shipGroup.add(solarPanel);
 
-  // Equipment racks on left wall
-  for (let r = 0; r < 3; r++) {
-    const rack = new THREE.Mesh(new THREE.BoxGeometry(0.22, 2.8, 1.8), panelMat);
-    rack.rotation.y = Math.PI / 2;
-    rack.position.set(-7.89, 1.4, -4 + r * 3.2);
-    group.add(rack);
-
-    // Rack slots
-    for (let s = 0; s < 5; s++) {
-      const slot = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.28, 1.5), darkSteel);
-      slot.rotation.y = Math.PI / 2;
-      slot.position.set(-7.80, 0.4 + s * 0.5, -4 + r * 3.2);
-      group.add(slot);
-
-      // Status LED (tiny coloured dot)
-      const ledColor = s === 2 ? 0x00ff44 : s === 4 ? 0xff4400 : 0x004488;
-      const led = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.04), new THREE.MeshBasicMaterial({ color: ledColor }));
-      led.position.set(-7.77, 0.4 + s * 0.5, -4.6 + r * 3.2);
-      group.add(led);
+    // Solar cell grid lines
+    for (let r = 0; r < 5; r++) {
+      const line = new THREE.Mesh(new THREE.BoxGeometry(6.5, 0.04, 0.04), darkMat);
+      line.position.set(s * 9.5, 4.52, -1.1 + r * 0.56);
+      shipGroup.add(line);
+    }
+    for (let c = 0; c < 9; c++) {
+      const cline = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 2.8), darkMat);
+      cline.position.set(s * 9.5 - 3.2 + c * 0.72, 4.52, 0);
+      shipGroup.add(cline);
     }
   }
 
-  // ── RIGHT WALL ─────────────────────────────────────────
-  const rightWall = new THREE.Mesh(new THREE.PlaneGeometry(16, 7), darkSteel);
-  rightWall.rotation.y = -Math.PI / 2;
-  rightWall.position.set(8, 3.5, -1);
-  group.add(rightWall);
+  // ── HABITAT INTERIOR (inside module 0) ─────────────────
+  // This is the room where astronaut + TARS stand
+  // It's a child of the ship, positioned inside module 0's volume
+  const habitatInterior = new THREE.Group();
+  // Module 0 is at z=RING_RADIUS (facing outward)
+  // Interior goes slightly inward so astronaut is visible through windows
 
-  // Structural I-beams along right wall
-  for (let z = -6; z <= 2; z += 4) {
-    // Vertical I-beam
-    const web = new THREE.Mesh(new THREE.BoxGeometry(0.08, 6, 0.22), steelMat);
-    web.rotation.y = -Math.PI / 2;
-    web.position.set(7.7, 3, z);
-    group.add(web);
-    const flangeTop = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.08, 0.22), chromeMat);
-    flangeTop.rotation.y = -Math.PI / 2;
-    flangeTop.position.set(7.7, 6.0, z);
-    group.add(flangeTop);
-    const flangeBot = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.08, 0.22), chromeMat);
-    flangeBot.rotation.y = -Math.PI / 2;
-    flangeBot.position.set(7.7, 0.04, z);
-    group.add(flangeBot);
-  }
+  // Floor
+  const floorMat = new THREE.MeshPhongMaterial({ color: 0x111820, shininess: 60, specular: 0x223344 });
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 3.8), floorMat);
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.set(0, -1.25, RING_RADIUS);
+  habitatInterior.add(floor);
 
-  // ── MAIN CONSOLE — LEFT OF ASTRONAUT ──────────────────
-  // Large angled console desk
-  const consoleBase = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.9, 1.2), darkSteel);
-  consoleBase.position.set(-3.5, 0.45, -2.0);
-  group.add(consoleBase);
+  // Floor grid
+  const grid = new THREE.GridHelper(3.4, 12, 0x1a2a3a, 0x0f1a24);
+  grid.position.set(0, -1.24, RING_RADIUS);
+  habitatInterior.add(grid);
 
-  const consoleSurface = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.08, 1.2), steelMat);
-  consoleSurface.position.set(-3.5, 0.92, -2.0);
-  consoleSurface.rotation.x = 0.18; // slight angle toward operator
-  group.add(consoleSurface);
+  // Wall panels (interior walls)
+  const intWallMat = new THREE.MeshPhongMaterial({ color: 0x161c22, shininess: 20 });
+  const backWall = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 2.4), intWallMat);
+  backWall.position.set(0, 0, RING_RADIUS - 1.8);
+  habitatInterior.add(backWall);
 
-  // Console screens (4 monitors)
-  const screenColors = [0x001a44, 0x001133, 0x002244, 0x001122];
-  for (let i = 0; i < 4; i++) {
-    const scr = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.52, 0.04), panelMat);
-    scr.position.set(-4.8 + i * 0.85, 1.55, -2.3);
+  // Console inside habitat
+  const consMat = new THREE.MeshPhongMaterial({ color: 0x0e1218, shininess: 40 });
+  const cons = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.7, 0.6), consMat);
+  cons.position.set(-0.8, -0.9, RING_RADIUS - 1.5);
+  habitatInterior.add(cons);
+
+  // Console screens
+  for (let i = 0; i < 3; i++) {
+    const scrMat = new THREE.MeshBasicMaterial({ color: i===1 ? 0x001a44 : 0x001133 });
+    const scr = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.38, 0.02), scrMat);
+    scr.position.set(-1.4 + i * 0.65, -0.46, RING_RADIUS - 1.19);
     scr.rotation.x = -0.15;
-    group.add(scr);
-
-    // Screen face (glowing)
-    const face = new THREE.Mesh(new THREE.PlaneGeometry(0.64, 0.44), new THREE.MeshBasicMaterial({ color: screenColors[i] }));
-    face.position.set(-4.8 + i * 0.85, 1.55, -2.28);
-    face.rotation.x = -0.15;
-    group.add(face);
-
-    // Soft screen glow
-    const sl = new THREE.PointLight(0x002255, 0.25, 1.5);
-    sl.position.set(-4.8 + i * 0.85, 1.55, -2.1);
-    group.add(sl);
+    habitatInterior.add(scr);
+    const sl = new THREE.PointLight(0x002255, 0.3, 1.2);
+    sl.position.set(-1.4 + i * 0.65, -0.4, RING_RADIUS - 1.0);
+    habitatInterior.add(sl);
   }
 
-  // Console keyboard strip
-  const kb = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.04, 0.35), steelMat);
-  kb.position.set(-3.5, 0.97, -1.6);
-  group.add(kb);
+  // Interior ceiling strip light
+  const intLight = new THREE.PointLight(0x8899cc, 1.2, 6);
+  intLight.position.set(0, 0.8, RING_RADIUS);
+  habitatInterior.add(intLight);
 
-  // ── SECONDARY CONSOLE — RIGHT SIDE ────────────────────
-  const con2 = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.1, 0.9), darkSteel);
-  con2.position.set(5.2, 0.55, -1.5);
-  group.add(con2);
+  // Overhead strip
+  const stripMat = new THREE.MeshBasicMaterial({ color: 0xaabbcc });
+  const strip = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.04, 0.06), stripMat);
+  strip.position.set(0, 1.22, RING_RADIUS);
+  habitatInterior.add(strip);
 
-  // 2 screens on right console
-  for (let i = 0; i < 2; i++) {
-    const s2 = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.5, 0.04), panelMat);
-    s2.position.set(4.65 + i * 0.9, 1.38, -1.5);
-    s2.rotation.x = -0.2;
-    group.add(s2);
-    const f2 = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.42), new THREE.MeshBasicMaterial({ color: i ? 0x001a22 : 0x001a00 }));
-    f2.position.set(4.65 + i * 0.9, 1.38, -1.48);
-    f2.rotation.x = -0.2;
-    group.add(f2);
-    const sl2 = new THREE.PointLight(i ? 0x002233 : 0x002200, 0.2, 1.2);
-    sl2.position.set(4.65 + i * 0.9, 1.4, -1.2);
-    group.add(sl2);
-  }
+  shipGroup.add(habitatInterior);
 
-  // ── OVERHEAD CONDUIT RUNS ──────────────────────────────
-  const conduitMat = new THREE.MeshPhongMaterial({ color: 0x2a3540, shininess: 40, specular: 0x445566 });
-  // Main conduit bundle along ceiling center
-  for (let c = 0; c < 4; c++) {
-    const conduit = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 16, 6), conduitMat);
-    conduit.rotation.z = Math.PI / 2;
-    conduit.position.set(0, 6.1 + c * 0.1, -3 + c * 0.05);
-    group.add(conduit);
-  }
-
-  // Drop conduits along left wall
-  for (let z = -5; z <= 3; z += 2) {
-    const dc = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 5, 6), conduitMat);
-    dc.position.set(-7.4, 3.5, z);
-    group.add(dc);
-  }
-
-  // ── FLOOR EDGE TRIM ────────────────────────────────────
-  const trimMat = new THREE.MeshPhongMaterial({ color: 0x334455, shininess: 120, specular: 0x667788 });
-  const trimF = new THREE.Mesh(new THREE.BoxGeometry(18, 0.06, 0.06), trimMat);
-  trimF.position.set(0, 0.03, 8);
-  group.add(trimF);
-  const trimB = new THREE.Mesh(new THREE.BoxGeometry(18, 0.06, 0.06), trimMat);
-  trimB.position.set(0, 0.03, -8);
-  group.add(trimB);
-
-  return group;
+  return shipGroup;
 }
 
+// ── STARFIELD ──────────────────────────────────────────────
 function buildStarfield() {
   const sg = new THREE.BufferGeometry();
-  const count = 3000;
+  const count = 5000;
   const sp = new Float32Array(count * 3);
   for (let i = 0; i < count; i++) {
-    // Concentrate stars behind the viewport window
-    sp[i*3]   = (Math.random() - 0.5) * 300;
-    sp[i*3+1] = (Math.random() - 0.5) * 200;
-    sp[i*3+2] = -20 - Math.random() * 280;
+    const theta = Math.random() * Math.PI * 2;
+    const phi   = Math.acos(2 * Math.random() - 1);
+    const r     = 200 + Math.random() * 300;
+    sp[i*3]   = r * Math.sin(phi) * Math.cos(theta);
+    sp[i*3+1] = r * Math.sin(phi) * Math.sin(theta);
+    sp[i*3+2] = r * Math.cos(phi);
   }
   sg.setAttribute('position', new THREE.BufferAttribute(sp, 3));
-  return new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xddeeff, size: 0.6 }));
+  return new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xddeeff, size: 0.7 }));
 }
 
 function initThree() {
@@ -917,70 +922,59 @@ function initThree() {
 
   renderer3 = new THREE.WebGLRenderer({ canvas: cv, antialias: true });
   renderer3.setSize(W, H);
-  renderer3.setClearColor(0x060e20, 1);
+  renderer3.setClearColor(0x020810, 1);
   renderer3.shadowMap.enabled = true;
 
   scene3 = new THREE.Scene();
-  // No fog — keep astronaut fully visible
 
-  cam3 = new THREE.PerspectiveCamera(48, W / H, 0.1, 500);
-  cam3.position.set(0, 2.2, 5.5);
-  cam3.lookAt(0, 1.8, 0);
+  cam3 = new THREE.PerspectiveCamera(52, W / H, 0.1, 800);
+  cam3.position.set(0, 12, 55);
+  cam3.lookAt(0, 0, 0);
 
-  // Lighting — bright enough to clearly see the astronaut
-  aimb = new THREE.AmbientLight(0xffffff, 1.4);
+  // Space ambient (very dim — space has no air)
+  aimb = new THREE.AmbientLight(0x111833, 1.0);
   scene3.add(aimb);
 
-  // Strong front key light — directly on the astronaut
-  const keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
-  keyLight.position.set(0, 4, 8);
-  scene3.add(keyLight);
+  // Sun light (strong directional from one side — like actual space)
+  const sunLight = new THREE.DirectionalLight(0xfff8ee, 2.8);
+  sunLight.position.set(80, 40, 60);
+  scene3.add(sunLight);
 
-  // Left fill — cool blue (viewport glow)
-  const fillLight = new THREE.DirectionalLight(0x88bbff, 1.2);
-  fillLight.position.set(-5, 3, 3);
-  scene3.add(fillLight);
+  // Soft fill from opposite side (earthshine)
+  const earthFill = new THREE.DirectionalLight(0x2244aa, 0.5);
+  earthFill.position.set(-60, -20, -40);
+  scene3.add(earthFill);
 
-  // Right fill — warm (console glow)
-  const fillRight = new THREE.DirectionalLight(0xffddaa, 0.8);
-  fillRight.position.set(5, 2, 3);
-  scene3.add(fillRight);
+  // Interior habitat light — strong to see astronaut when zoomed in
+  const habLight = new THREE.PointLight(0xaabbdd, 2.5, 12);
+  habLight.position.set(0, 2, 22); // inside module 0
+  scene3.add(habLight);
 
-  // Top overhead strip
-  const stripLight = new THREE.DirectionalLight(0xccddff, 1.0);
-  stripLight.position.set(0, 10, 0);
-  scene3.add(stripLight);
-
-  // Rim light — separates astronaut from background
-  const rimLight = new THREE.DirectionalLight(0x4499ff, 0.9);
-  rimLight.position.set(0, 5, -8);
-  scene3.add(rimLight);
-
-  // Starfield (visible through the viewport)
+  // Starfield
   scene3.add(buildStarfield());
 
-  // Spaceship interior
-  scene3.add(buildSpaceshipInterior());
+  // Endurance spaceship
+  enduranceRing = buildEndurance();
+  scene3.add(enduranceRing);
 
-  // TARS robot
+  // TARS — placed inside module 0 (at z=RING_RADIUS, offset to side)
   tarsGroup = buildTARS();
+  tarsGroup.position.set(1.8, -1.25, 22);  // inside habitat module 0
+  tarsGroup.rotation.y = -0.4;
   scene3.add(tarsGroup);
 
-  // Risk ring (around astronaut position)
+  // Risk ring — around astronaut position inside habitat
   riskRingMat = new THREE.MeshBasicMaterial({ color: 0x00e87a, transparent: true, opacity: 0.55 });
-  riskRing = new THREE.Mesh(new THREE.TorusGeometry(1.1, 0.04, 8, 80), riskRingMat);
-  riskRing.position.y = 1.5;
+  riskRing = new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.04, 8, 80), riskRingMat);
+  riskRing.position.set(0, 0.2, 22);
+  riskRing.rotation.x = Math.PI / 2;
   scene3.add(riskRing);
 
-  // Placeholder group for astronaut (used for movement before GLB loads)
+  // Astronaut group — inside habitat module 0
   astronaut = new THREE.Group();
-  astronaut.position.set(0, 0, 0);
+  astronaut.position.set(-0.3, -1.25, 22);
   scene3.add(astronaut);
 
-  // bodyMesh stub for pulse (will be replaced by GLB mesh reference)
-  bodyMesh = null;
-
-  // Load GLB
   loadAstronautGLB();
 
   threeOK = true;
@@ -988,11 +982,10 @@ function initThree() {
   // ── CAMERA CONTROLS ─────────────────────────────────
   cv.addEventListener('wheel', (e) => {
     e.preventDefault();
-    const delta = e.deltaY > 0 ? 1.08 : 0.93;
+    const delta = e.deltaY > 0 ? 1.10 : 0.91;
     camState.radius = Math.max(camState.minRadius, Math.min(camState.maxRadius, camState.radius * delta));
   }, { passive: false });
 
-  // Mouse drag
   cv.addEventListener('mousedown', (e) => {
     camState.isDragging = true;
     camState.autoRotate = false;
@@ -1004,13 +997,12 @@ function initThree() {
     const dx = e.clientX - camState.lastX;
     const dy = e.clientY - camState.lastY;
     camState.theta -= dx * 0.008;
-    camState.phi   = Math.max(-Math.PI/2.2, Math.min(Math.PI/2.2, camState.phi - dy * 0.006));
+    camState.phi = Math.max(-Math.PI/2.2, Math.min(Math.PI/2.2, camState.phi - dy * 0.006));
     camState.lastX = e.clientX;
     camState.lastY = e.clientY;
   });
   window.addEventListener('mouseup', () => { camState.isDragging = false; });
 
-  // Touch drag + pinch zoom
   cv.addEventListener('touchstart', (e) => {
     if (e.touches.length === 1) {
       camState.isDragging = true;
@@ -1030,7 +1022,7 @@ function initThree() {
       const dx = e.touches[0].clientX - camState.lastX;
       const dy = e.touches[0].clientY - camState.lastY;
       camState.theta -= dx * 0.008;
-      camState.phi   = Math.max(-Math.PI/2.2, Math.min(Math.PI/2.2, camState.phi - dy * 0.006));
+      camState.phi = Math.max(-Math.PI/2.2, Math.min(Math.PI/2.2, camState.phi - dy * 0.006));
       camState.lastX = e.touches[0].clientX;
       camState.lastY = e.touches[0].clientY;
     } else if (e.touches.length === 2 && camState.lastPinchDist !== null) {
@@ -1044,11 +1036,12 @@ function initThree() {
   }, { passive: false });
   cv.addEventListener('touchend', () => { camState.isDragging = false; camState.lastPinchDist = null; });
 
-  // Double-click to reset camera
   cv.addEventListener('dblclick', () => {
-    camState.radius = 5.8;
-    camState.theta  = 0;
-    camState.phi    = 0.38;
+    // Reset to exterior view
+    camState.radius = 55;
+    camState.theta  = 0.4;
+    camState.phi    = 0.22;
+    camState.targetY = 0;
     camState.autoRotate = true;
   });
 
@@ -1057,62 +1050,43 @@ function initThree() {
 
 function loadAstronautGLB() {
   if (!THREE.GLTFLoader) {
-    console.warn('GLTFLoader not available, skipping GLB load');
     buildFallbackAstronaut();
     return;
   }
-
   const loader = new THREE.GLTFLoader();
   loader.load(
     '/Astronaut.glb',
     function(gltf) {
-      // Remove any existing children
       while (astronaut.children.length > 0) astronaut.remove(astronaut.children[0]);
-
       const model = gltf.scene;
-
-      // Auto-scale and center the model
       const box = new THREE.Box3().setFromObject(model);
       const size = box.getSize(new THREE.Vector3());
-      const center = box.getCenter(new THREE.Vector3());
-
-      // Scale to ~2.8 units tall (matching original astronaut height)
-      const targetHeight = 2.8;
+      const targetHeight = 2.2;
       const scaleFactor = targetHeight / size.y;
       model.scale.setScalar(scaleFactor);
-
-      // Recompute box after scale
       box.setFromObject(model);
       const newCenter = box.getCenter(new THREE.Vector3());
       const newMin = box.min;
-
-      // Place feet on the floor (y=0)
       model.position.x = -newCenter.x;
       model.position.y = -newMin.y;
       model.position.z = -newCenter.z;
-
       astronaut.add(model);
       glbLoaded = true;
-      console.log('Astronaut.glb loaded successfully');
     },
-    function(progress) {
-      // loading progress
-    },
+    null,
     function(error) {
-      console.warn('GLB load error:', error);
-      // Fallback to primitive astronaut
       buildFallbackAstronaut();
     }
   );
 }
 
 function buildFallbackAstronaut() {
-  // Simple capsule-style fallback if GLB fails
   const mat = new THREE.MeshPhongMaterial({ color: 0xcccccc, shininess: 35 });
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.45, 1.6, 16), mat);
-  body.position.y = 1.8;
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.45, 16, 16), new THREE.MeshPhongMaterial({ color: 0xeeeeee, shininess: 80 }));
-  head.position.y = 3.0;
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.38, 1.3, 16), mat);
+  body.position.y = 1.5;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.38, 16, 16),
+    new THREE.MeshPhongMaterial({ color: 0xeeeeee, shininess: 80 }));
+  head.position.y = 2.6;
   astronaut.add(body, head);
   bodyMesh = body;
   glbLoaded = true;
@@ -1128,27 +1102,36 @@ function loopThree(ts = 0) {
   _t3last = ts;
   const t = ts * 0.001;
 
-  // ── CAMERA ORBIT ────────────────────────────────────
+  // ── DYNAMIC CAMERA TARGET ──────────────────────────────
+  // When zoomed in (radius < ~15), look at habitat interior; 
+  // when zoomed out, look at ship center
+  const zoomBlend = Math.max(0, Math.min(1, (camState.radius - 8) / 25));
+  const lookTargetX = 0;
+  const lookTargetY = camState.targetY + (1 - zoomBlend) * 1.5; // look slightly up at astronaut when close
+  const lookTargetZ = zoomBlend * 0 + (1 - zoomBlend) * 22; // shift toward habitat module when close
+
+  // ── CAMERA ORBIT ───────────────────────────────────────
   if (camState.autoRotate) {
-    camState.theta += 0.003; // slow auto-rotate when not dragging
+    camState.theta += 0.003;
   }
   const cx = camState.radius * Math.cos(camState.phi) * Math.sin(camState.theta);
-  const cy = camState.targetY + camState.radius * Math.sin(camState.phi) + Math.sin(t * 0.07) * 0.1;
-  const cz = camState.radius * Math.cos(camState.phi) * Math.cos(camState.theta);
+  const cy = lookTargetY + camState.radius * Math.sin(camState.phi) + Math.sin(t * 0.07) * 0.08;
+  const cz = lookTargetZ + camState.radius * Math.cos(camState.phi) * Math.cos(camState.theta);
   cam3.position.set(cx, cy, cz);
-  cam3.lookAt(0, camState.targetY, 0);
+  cam3.lookAt(lookTargetX, lookTargetY, lookTargetZ);
 
-  // TARS animations
+  // ── ENDURANCE RING SLOW ROTATION ───────────────────────
+  if (enduranceRing) {
+    enduranceRing.rotation.z += 0.0018; // slow spin like the actual ship
+  }
+
+  // ── TARS ANIMATION ─────────────────────────────────────
   if (tarsGroup) {
-    // TARS subtle lean / breathe
-    tarsGroup.rotation.y = -0.5 + Math.sin(t * 0.3) * 0.06;
-    // TARS eye scan line oscillation
+    tarsGroup.rotation.y = -0.4 + Math.sin(t * 0.3) * 0.06;
     const scan = tarsGroup.getObjectByName('tars_scan');
     if (scan) scan.position.y = 0.15 + Math.sin(t * 1.8) * 0.25;
-    // TARS eye color pulse
     if (tarsScreenMat) {
-      const pulse = 0.7 + Math.sin(t * 2.1) * 0.3;
-      tarsLight.intensity = pulse * 0.9;
+      tarsLight.intensity = (0.7 + Math.sin(t * 2.1) * 0.3) * 0.9;
     }
   }
 
@@ -1159,52 +1142,43 @@ function loopThree(ts = 0) {
 
   const { fatigue, hr, smsSev, stress, risk, phase } = _simState;
 
-  // Astronaut phase-based pose
+  // Astronaut phase animations
   if (phase === 'SLEEP') {
-    // Tilt forward — sleeping / floating
     astronaut.rotation.x += ((-Math.PI / 2.4) - astronaut.rotation.x) * 0.04;
-    astronaut.position.y += (-0.6 - astronaut.position.y) * 0.04;
-    aimb.intensity += (0.7 - aimb.intensity) * 0.03;
+    astronaut.position.y += (-0.5 - astronaut.position.y) * 0.04;
+    aimb.intensity += (0.5 - aimb.intensity) * 0.03;
   } else {
     astronaut.rotation.x += (0 - astronaut.rotation.x) * 0.04;
-    astronaut.position.y += (0 - astronaut.position.y) * 0.04;
-    aimb.intensity += (1.4 - aimb.intensity) * 0.03;
+    astronaut.position.y += (-1.25 - astronaut.position.y) * 0.04;
+    aimb.intensity += (1.0 - aimb.intensity) * 0.03;
   }
 
-  // Fatigue sway
   const swaySpeed = 1.2 - fatigue * 0.8;
   astronaut.rotation.z = Math.sin(t * swaySpeed) * (fatigue * 0.06 + 0.01);
 
-  // SMS (motion sickness) shake
   if (smsSev > 0.1) {
     astronaut.rotation.z += Math.sin(t * 4.5) * smsSev * 0.09;
-    astronaut.position.x = Math.sin(t * 3.8) * smsSev * 0.06;
+    astronaut.position.x = -0.3 + Math.sin(t * 3.8) * smsSev * 0.06;
   } else {
-    astronaut.position.x *= 0.95;
+    astronaut.position.x += (-0.3 - astronaut.position.x) * 0.05;
   }
 
-  // Heartbeat pulse — applied to astronaut root scale (works for GLB too)
   const hrRad = (hr / 60) * 2 * Math.PI;
   const pulse = 1 + Math.sin(t * hrRad) * 0.012;
   astronaut.scale.x = pulse;
   astronaut.scale.z = pulse;
 
-  // Stress → TARS eye color shifts
   if (tarsScreenMat) {
-    if (stress > 0.7) {
-      tarsScreenMat.color.setHex(0xff4040);
-    } else if (stress > 0.4) {
-      tarsScreenMat.color.setHex(0xffaa00);
-    } else {
-      tarsScreenMat.color.setHex(0x00d4ff);
-    }
+    if (stress > 0.7) tarsScreenMat.color.setHex(0xff4040);
+    else if (stress > 0.4) tarsScreenMat.color.setHex(0xffaa00);
+    else tarsScreenMat.color.setHex(0x00d4ff);
   }
 
-  // Risk ring
+  // Risk ring follows astronaut
   const rc = risk < 0.4 ? new THREE.Color(0x00e87a) : risk < 0.7 ? new THREE.Color(0xffaa00) : new THREE.Color(0xff4040);
   riskRingMat.color.lerp(rc, 0.08);
   riskRing.position.x = astronaut.position.x;
-  riskRing.rotation.y = t * 0.8;
+  riskRing.rotation.z = t * 0.8;
 
   renderer3.render(scene3, cam3);
 }
