@@ -161,9 +161,9 @@ input[type=range]{width:100%;height:2px;accent-color:var(--cyan);cursor:pointer}
   <div class="panel" id="panel-ctrl">
     <div class="ptitle">MISSION CONTROL</div>
     <div class="crow"><div class="clabel">MISSION DURATION <span id="lbl-cyc">30 days</span></div><input type="range" id="ctrl-cyc" min="1" max="90" value="30" step="1"></div>
-    <div class="crow"><div class="clabel">BASELINE HR <span id="lbl-hr">75 bpm</span></div><input type="range" id="ctrl-hr" min="55" max="100" value="75"></div>
-    <div class="crow"><div class="clabel">SLEEP QUALITY <span id="lbl-sq">0.80</span></div><input type="range" id="ctrl-sq" min="1" max="10" value="8"></div>
-    <div class="crow"><div class="clabel">INIT FATIGUE <span id="lbl-fat">0.0</span></div><input type="range" id="ctrl-fat" min="0" max="10" value="0"></div>
+    <div class="crow"><div class="clabel">SMS RATE (λ/day) <span id="lbl-lam">0.72</span></div><input type="range" id="ctrl-lam" min="1" max="20" value="7" step="1"></div>
+    <div class="crow"><div class="clabel">RECOVERY FACTOR <span id="lbl-rec">1.0×</span></div><input type="range" id="ctrl-rec" min="5" max="20" value="10" step="1"></div>
+    <div class="crow"><div class="clabel">FATIGUE SENSITIVITY <span id="lbl-fsens">1.0×</span></div><input type="range" id="ctrl-fsens" min="5" max="20" value="10" step="1"></div>
     <div class="crow"><div class="clabel">PLAYBACK SPEED <span id="lbl-spd">1.0×</span></div><input type="range" id="ctrl-spd" min="1" max="8" value="3"></div>
 
     <button class="btn primary" id="btn-run" onclick="startSimulation()">◈ RUN SIMULATION</button>
@@ -327,12 +327,15 @@ async function startSimulation() {
   const cfg = {
     mission_duration_hours: +document.getElementById('ctrl-cyc').value * 24,
     time_step_minutes: 30,
-    baseline_hr: +document.getElementById('ctrl-hr').value,
-    baseline_sleep_quality: +document.getElementById('ctrl-sq').value / 10,
-    initial_fatigue: +document.getElementById('ctrl-fat').value / 10,
+    baseline_hr: 75,
+    baseline_sleep_quality: 0.80,
+    initial_fatigue: 0.0,
+    sms_rate_per_day: +document.getElementById('ctrl-lam').value / 10,
+    recovery_factor: +document.getElementById('ctrl-rec').value / 10,
+    fatigue_sensitivity: +document.getElementById('ctrl-fsens').value / 10,
     enable_motion_sickness: true,
     enable_sleep_disruption: true,
-    use_biogears: false,
+    use_biogears: true,
     save_trajectories: true,
     save_events: true,
   };
@@ -1341,9 +1344,9 @@ function showReport() {
 
 const sliders = [
   ['ctrl-cyc', 'lbl-cyc', v=>`${v} days`],
-  ['ctrl-hr',  'lbl-hr',  v=>`${v} bpm`],
-  ['ctrl-sq',  'lbl-sq',  v=>(v/10).toFixed(2)],
-  ['ctrl-fat', 'lbl-fat', v=>(v/10).toFixed(1)],
+  ['ctrl-lam',  'lbl-lam',  v=>(v/10).toFixed(2)+'/day'],
+  ['ctrl-rec',  'lbl-rec',  v=>(v/10).toFixed(1)+'×'],
+  ['ctrl-fsens','lbl-fsens',v=>(v/10).toFixed(1)+'×'],
   ['ctrl-spd', 'lbl-spd', v=>`${(10/(v/3)).toFixed(0)}s/day`],
 ];
 sliders.forEach(([id,lid,fmt])=>{
