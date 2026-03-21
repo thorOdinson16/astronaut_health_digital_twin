@@ -189,6 +189,10 @@ input[type=range]{width:100%;height:2px;accent-color:var(--cyan);cursor:pointer}
     <div class="ptitle" style="text-align:center">ENDURANCE · ASTRONAUT DIGITAL TWIN</div>
     <canvas id="three-canvas"></canvas>
     <div id="zoom-hint">SCROLL TO ZOOM · DRAG TO ORBIT · DBL-CLICK RESET</div>
+    <div style="display:flex;gap:6px;width:100%">
+      <button class="btn" id="btn-cam-ship" onclick="setCamMode('ship')" style="border-color:var(--cyan);color:var(--cyan)">◈ ENDURANCE VIEW</button>
+      <button class="btn" id="btn-cam-astro" onclick="setCamMode('astro')">◈ ASTRONAUT VIEW</button>
+    </div>
     <div id="phase-disp">◈ AWAITING MISSION INITIALIZATION</div>
     <div id="vitals">
       <div class="vcard"><div class="vlabel">HEART RATE</div><div class="vval" id="v-hr">—</div><div class="vunit">bpm</div></div>
@@ -335,7 +339,7 @@ async function startSimulation() {
     initial_fatigue: +document.getElementById('ctrl-fat').value / 10,
     enable_motion_sickness: true,
     enable_sleep_disruption: true,
-    use_biogears: false,
+    use_biogears: true,
     save_trajectories: true,
     save_events: true,
   };
@@ -500,7 +504,7 @@ let glbLoaded = false;
 
 // Camera orbit state
 const camState = {
-  radius: 55,           // start far out to see whole ship
+  radius: 110,           // start far out to see whole ship
   theta: 0.4,
   phi: 0.22,
   targetY: 0,
@@ -508,7 +512,7 @@ const camState = {
   lastX: 0, lastY: 0,
   autoRotate: true,
   minRadius: 2.5,       // zoom in very close to see astronaut
-  maxRadius: 80,        // zoom out to see full Endurance
+  maxRadius: 1000,        // zoom out to see full Endurance
   lastPinchDist: null,
 };
 
@@ -695,23 +699,6 @@ function buildEndurance() {
     spokeGroup.add(junct);
 
     shipGroup.add(spokeGroup);
-  }
-
-  // ── RING CORRIDOR (torus connecting all modules) ──────
-  const ringTube = new THREE.Mesh(
-    new THREE.TorusGeometry(RING_RADIUS, 0.55, 16, 96),
-    darkMat
-  );
-  ringTube.rotation.x = Math.PI / 2;
-  shipGroup.add(ringTube);
-
-  // Ring reinforcement bands every 30°
-  for (let i = 0; i < 12; i++) {
-    const ba = (i / 12) * Math.PI * 2;
-    const band = new THREE.Mesh(new THREE.TorusGeometry(RING_RADIUS, 0.65, 6, 6, Math.PI / 8), chromeMat);
-    band.rotation.x = Math.PI / 2;
-    band.rotation.z = ba;
-    shipGroup.add(band);
   }
 
   // ── HABITAT MODULES (12 box-shaped pods on the ring) ──
@@ -927,8 +914,8 @@ function initThree() {
 
   scene3 = new THREE.Scene();
 
-  cam3 = new THREE.PerspectiveCamera(52, W / H, 0.1, 800);
-  cam3.position.set(0, 12, 55);
+  cam3 = new THREE.PerspectiveCamera(52, W / H, 0.1, 2000);
+  cam3.position.set(0, 12, 110);
   cam3.lookAt(0, 0, 0);
 
   // Space ambient (very dim — space has no air)
@@ -945,37 +932,51 @@ function initThree() {
   earthFill.position.set(-60, -20, -40);
   scene3.add(earthFill);
 
-  // Interior habitat light — strong to see astronaut when zoomed in
-  const habLight = new THREE.PointLight(0xaabbdd, 2.5, 12);
-  habLight.position.set(0, 2, 22); // inside module 0
-  scene3.add(habLight);
-
   // Starfield
   scene3.add(buildStarfield());
 
   // Endurance spaceship
   enduranceRing = buildEndurance();
+  enduranceRing.scale.set(2.0, 2.0, 2.0);
   scene3.add(enduranceRing);
+
+  const bhLoader = new THREE.GLTFLoader();
+  bhLoader.load('/BlackHole.glb', function(gltf) {
+      const bh = gltf.scene;
+      bh.scale.setScalar(3);          // size — adjust this
+      bh.position.set(1000, -100, -1000);   // away from ship — adjust this
+      scene3.add(bh);
+  });
+
+  // Interior habitat light — strong to see astronaut when zoomed in
+  const habLight = new THREE.PointLight(0xaabbdd, 2.5, 12);
+  habLight.position.set(0, 2, 44);
+  scene3.add(habLight);
 
   // TARS — placed inside module 0 (at z=RING_RADIUS, offset to side)
   tarsGroup = buildTARS();
-  tarsGroup.position.set(1.8, -1.25, 22);  // inside habitat module 0
+  tarsGroup.position.set(1.8, -1.25, 44);
   tarsGroup.rotation.y = -0.4;
   scene3.add(tarsGroup);
 
   // Risk ring — around astronaut position inside habitat
   riskRingMat = new THREE.MeshBasicMaterial({ color: 0x00e87a, transparent: true, opacity: 0.55 });
   riskRing = new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.04, 8, 80), riskRingMat);
-  riskRing.position.set(0, 0.2, 22);
+  habLight.position.set(0, 2, 44);
   riskRing.rotation.x = Math.PI / 2;
   scene3.add(riskRing);
 
   // Astronaut group — inside habitat module 0
   astronaut = new THREE.Group();
-  astronaut.position.set(-0.3, -1.25, 22);
+  astronaut.position.set(-0.3, -1.25, 44);
   scene3.add(astronaut);
 
   loadAstronautGLB();
+
+  astronaut.position.y -= 1.2;
+  tarsGroup.position.y -= 0.7;
+  astronaut.rotation.z = Math.PI / 18;   // tilt 90° — adjust this angle
+  tarsGroup.rotation.z = Math.PI / 18;
 
   threeOK = true;
 
@@ -1036,14 +1037,9 @@ function initThree() {
   }, { passive: false });
   cv.addEventListener('touchend', () => { camState.isDragging = false; camState.lastPinchDist = null; });
 
-  cv.addEventListener('dblclick', () => {
-    // Reset to exterior view
-    camState.radius = 55;
-    camState.theta  = 0.4;
-    camState.phi    = 0.22;
-    camState.targetY = 0;
-    camState.autoRotate = true;
-  });
+  cv.addEventListener('dblclick', () => { setCamMode(camMode); });
+
+  astroLookTarget = new THREE.Vector3(-0.3, -1.65, 44);
 
   loopThree();
 }
@@ -1092,6 +1088,30 @@ function buildFallbackAstronaut() {
   glbLoaded = true;
 }
 
+let camMode = 'ship';
+
+function setCamMode(mode) {
+  camMode = mode;
+  if (mode === 'ship') {
+    cam3.up.set(0, 1, 0); 
+    camState.radius = 110; camState.theta = 0.4; camState.phi = 0.1;
+    camState.targetY = 0; camState.autoRotate = true;
+    document.getElementById('btn-cam-ship').style.borderColor = 'var(--cyan)';
+    document.getElementById('btn-cam-ship').style.color = 'var(--cyan)';
+    document.getElementById('btn-cam-astro').style.borderColor = '';
+    document.getElementById('btn-cam-astro').style.color = '';
+  } else {
+    enduranceRing.rotation.z = 0.15;
+    cam3.up.set(-0.15, 1, 0);
+    camState.radius = 4.3; camState.theta = 0; camState.phi = 0.2;
+    camState.targetY = 0; camState.autoRotate = false;
+    document.getElementById('btn-cam-astro').style.borderColor = 'var(--cyan)';
+    document.getElementById('btn-cam-astro').style.color = 'var(--cyan)';
+    document.getElementById('btn-cam-ship').style.borderColor = '';
+    document.getElementById('btn-cam-ship').style.color = '';
+  }
+}
+
 let _t3last = 0, _simState = null;
 
 function loopThree(ts = 0) {
@@ -1105,24 +1125,26 @@ function loopThree(ts = 0) {
   // ── DYNAMIC CAMERA TARGET ──────────────────────────────
   // When zoomed in (radius < ~15), look at habitat interior; 
   // when zoomed out, look at ship center
-  const zoomBlend = Math.max(0, Math.min(1, (camState.radius - 8) / 25));
-  const lookTargetX = 0;
-  const lookTargetY = camState.targetY + (1 - zoomBlend) * 1.5; // look slightly up at astronaut when close
-  const lookTargetZ = zoomBlend * 0 + (1 - zoomBlend) * 22; // shift toward habitat module when close
+  let lookTargetX = 0, lookTargetY = camState.targetY, lookTargetZ = 0;
+  if (camMode === 'astro') {
+      lookTargetX = astroLookTarget.x;
+      lookTargetY = astroLookTarget.y;
+      lookTargetZ = astroLookTarget.z;
+  }
 
   // ── CAMERA ORBIT ───────────────────────────────────────
   if (camState.autoRotate) {
     camState.theta += 0.003;
   }
-  const cx = camState.radius * Math.cos(camState.phi) * Math.sin(camState.theta);
-  const cy = lookTargetY + camState.radius * Math.sin(camState.phi) + Math.sin(t * 0.07) * 0.08;
+  const cx = lookTargetX + camState.radius * Math.cos(camState.phi) * Math.sin(camState.theta);
+  const cy = lookTargetY + camState.radius * Math.sin(camState.phi);
   const cz = lookTargetZ + camState.radius * Math.cos(camState.phi) * Math.cos(camState.theta);
   cam3.position.set(cx, cy, cz);
   cam3.lookAt(lookTargetX, lookTargetY, lookTargetZ);
 
   // ── ENDURANCE RING SLOW ROTATION ───────────────────────
-  if (enduranceRing) {
-    enduranceRing.rotation.z += 0.0018; // slow spin like the actual ship
+  if (enduranceRing && camMode === 'ship') {
+    enduranceRing.rotation.z += 0.0018;
   }
 
   // ── TARS ANIMATION ─────────────────────────────────────
@@ -1145,11 +1167,11 @@ function loopThree(ts = 0) {
   // Astronaut phase animations
   if (phase === 'SLEEP') {
     astronaut.rotation.x += ((-Math.PI / 2.4) - astronaut.rotation.x) * 0.04;
-    astronaut.position.y += (-0.5 - astronaut.position.y) * 0.04;
+    astronaut.position.y += (-1.8 - astronaut.position.y);
     aimb.intensity += (0.5 - aimb.intensity) * 0.03;
   } else {
     astronaut.rotation.x += (0 - astronaut.rotation.x) * 0.04;
-    astronaut.position.y += (-1.25 - astronaut.position.y) * 0.04;
+    astronaut.position.y += (-2.45 - astronaut.position.y);
     aimb.intensity += (1.0 - aimb.intensity) * 0.03;
   }
 
