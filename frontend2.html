@@ -134,6 +134,21 @@ input[type=range]{width:100%;height:2px;accent-color:var(--cyan);cursor:pointer}
 
 /* Scrollbar */
 ::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:var(--panel)}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+#dbpanel{position:fixed;top:60px;right:12px;background:rgba(4,12,24,.95);border:1px solid #00d4ff;border-radius:5px;padding:14px 16px;font-family:"Courier New",monospace;font-size:11px;color:#7aa8c8;z-index:9999;width:260px;display:none;user-select:none}
+#dbpanel h4{color:#00d4ff;letter-spacing:3px;font-size:9px;margin:0 0 12px;border-bottom:1px solid #152844;padding-bottom:7px}
+#dbpanel .drow{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+#dbpanel .dlbl{width:46px;color:#00d4ff;font-size:9px;letter-spacing:1px;flex-shrink:0}
+#dbpanel .dcoarse{width:28px;text-align:center;background:rgba(0,212,255,.08);border:1px solid #223344;color:#00d4ff;font-size:10px;cursor:pointer;border-radius:2px;flex-shrink:0}
+#dbpanel .dcoarse:hover{background:rgba(0,212,255,.2)}
+#dbpanel input[type=range]{flex:1;accent-color:#00d4ff;height:2px}
+#dbpanel .dval{width:44px;text-align:right;color:#ffaa00;font-size:10px;flex-shrink:0}
+#dbpanel .dsec{color:#7aa8c8;font-size:8px;letter-spacing:2px;margin:10px 0 8px;border-top:1px solid #152844;padding-top:8px}
+#dbpanel .dcode{background:rgba(0,212,255,.06);border:1px solid #152844;border-radius:3px;padding:6px 8px;font-size:9px;color:#00e87a;margin-top:10px;word-break:break-all;cursor:pointer}
+#dbpanel .dcode:hover{border-color:#00e87a}
+#dbpanel .dhint{color:#445566;font-size:8px;margin-top:5px;line-height:1.4}
+#dbtn{position:fixed;top:60px;right:285px;background:rgba(4,12,24,.85);border:1px solid #334466;color:#7aa8c8;font-family:"Courier New",monospace;font-size:9px;padding:5px 9px;cursor:pointer;border-radius:3px;z-index:9999;letter-spacing:1px}
+#dbtn:hover{border-color:#00d4ff;color:#00d4ff}
+#dbtn.active{border-color:#ffaa00;color:#ffaa00}
 </style>
 </head>
 <body>
@@ -164,9 +179,9 @@ input[type=range]{width:100%;height:2px;accent-color:var(--cyan);cursor:pointer}
   <div class="panel" id="panel-ctrl">
     <div class="ptitle">MISSION CONTROL</div>
     <div class="crow"><div class="clabel">MISSION DURATION <span id="lbl-cyc">30 days</span></div><input type="range" id="ctrl-cyc" min="1" max="90" value="30" step="1"></div>
-    <div class="crow"><div class="clabel">BASELINE HR <span id="lbl-hr">75 bpm</span></div><input type="range" id="ctrl-hr" min="55" max="100" value="75"></div>
-    <div class="crow"><div class="clabel">SLEEP QUALITY <span id="lbl-sq">0.80</span></div><input type="range" id="ctrl-sq" min="1" max="10" value="8"></div>
-    <div class="crow"><div class="clabel">INIT FATIGUE <span id="lbl-fat">0.0</span></div><input type="range" id="ctrl-fat" min="0" max="10" value="0"></div>
+    <div class="crow"><div class="clabel">SMS RATE (λ/day) <span id="lbl-lam">0.72</span></div><input type="range" id="ctrl-lam" min="1" max="20" value="7" step="1"></div>
+    <div class="crow"><div class="clabel">RECOVERY FACTOR <span id="lbl-rec">1.0×</span></div><input type="range" id="ctrl-rec" min="5" max="20" value="10" step="1"></div>
+    <div class="crow"><div class="clabel">FATIGUE SENSITIVITY <span id="lbl-fsens">1.0×</span></div><input type="range" id="ctrl-fsens" min="5" max="20" value="10" step="1"></div>
     <div class="crow"><div class="clabel">PLAYBACK SPEED <span id="lbl-spd">1.0×</span></div><input type="range" id="ctrl-spd" min="1" max="8" value="3"></div>
 
     <button class="btn primary" id="btn-run" onclick="startSimulation()">◈ RUN SIMULATION</button>
@@ -334,9 +349,12 @@ async function startSimulation() {
   const cfg = {
     mission_duration_hours: +document.getElementById('ctrl-cyc').value * 24,
     time_step_minutes: 30,
-    baseline_hr: +document.getElementById('ctrl-hr').value,
-    baseline_sleep_quality: +document.getElementById('ctrl-sq').value / 10,
-    initial_fatigue: +document.getElementById('ctrl-fat').value / 10,
+    baseline_hr: 75,
+    baseline_sleep_quality: 0.80,
+    initial_fatigue: 0.0,
+    sms_rate_per_day: +document.getElementById('ctrl-lam').value / 10,
+    recovery_factor: +document.getElementById('ctrl-rec').value / 10,
+    fatigue_sensitivity: +document.getElementById('ctrl-fsens').value / 10,
     enable_motion_sickness: true,
     enable_sleep_disruption: true,
     use_biogears: true,
@@ -427,7 +445,7 @@ function buildTimeline() {
     const avgFat = indices.length ? indices.reduce((s,i) => s + fat[i], 0) / indices.length : 0;
 
     const dayEvents = events.filter(e => {
-      const t = e.simulation_time || e.start_time || 0;
+      const t = e.onset_time || e.simulation_time || e.start_time || 0;
       return t >= dStart && t < dEnd;
     });
     const hasSms = dayEvents.some(e => e.type && e.type.toLowerCase().includes('motion'));
@@ -498,7 +516,8 @@ let tarsGroup, tarsLight, tarsScreenMat;
 let bodyMesh, bodyMat;
 let riskRing, riskRingMat;
 let enduranceRing;          // the rotating ring
-let habitatPod;             // the habitat module astronaut lives in
+let roomContainer;          // room + astronaut + TARS parented group
+let astroLookTarget;        // camera look-at for astronaut view
 let threeOK = false;
 let glbLoaded = false;
 
@@ -604,6 +623,192 @@ function buildTARS() {
   tarsLight = new THREE.PointLight(0x00c8ff, 1.2, 3.5);
   tarsLight.position.set(0, eyeY, panelD / 2 + 0.8);
   group.add(tarsLight);
+
+  return group;
+}
+
+// ── SPACESHIP INTERIOR ROOM ───────────────────────────────
+function buildSpaceshipInterior() {
+  const group = new THREE.Group();
+
+  const steelMat   = new THREE.MeshPhongMaterial({ color: 0x1c2128, shininess: 60, specular: 0x334455 });
+  const darkSteel  = new THREE.MeshPhongMaterial({ color: 0x0e1218, shininess: 30, specular: 0x223344 });
+  const panelMat   = new THREE.MeshPhongMaterial({ color: 0x161c22, shininess: 20, specular: 0x1a2233 });
+  const chromeMat  = new THREE.MeshPhongMaterial({ color: 0x445566, shininess: 200, specular: 0xaabbcc });
+  const glowMat    = new THREE.MeshBasicMaterial({ color: 0x001833 });
+  const floorMat   = new THREE.MeshPhongMaterial({ color: 0x111820, shininess: 80, specular: 0x223344 });
+  const ceilingMat = new THREE.MeshPhongMaterial({ color: 0x0c1018, shininess: 10 });
+  const glassMat   = new THREE.MeshPhongMaterial({ color: 0x000d1a, transparent: true, opacity: 0.55, shininess: 300, specular: 0x5599cc });
+
+  // Floor
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(18, 16), floorMat);
+  floor.rotation.x = -Math.PI / 2;
+  group.add(floor);
+  const grid1 = new THREE.GridHelper(18, 36, 0x1a2a3a, 0x0f1a24);
+  grid1.position.y = 0.002;
+  group.add(grid1);
+  for (let z = -6; z <= 6; z += 2) {
+    const seam = new THREE.Mesh(new THREE.BoxGeometry(18, 0.015, 0.04), chromeMat);
+    seam.position.set(0, 0.008, z);
+    group.add(seam);
+  }
+
+  // Ceiling
+  const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(18, 16), ceilingMat);
+  ceiling.rotation.x = Math.PI / 2;
+  ceiling.position.y = 6.5;
+  group.add(ceiling);
+  for (let z = -5; z <= 4; z += 3) {
+    const rib = new THREE.Mesh(new THREE.BoxGeometry(18, 0.18, 0.22), steelMat);
+    rib.position.set(0, 6.35, z);
+    group.add(rib);
+    const flangeL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.32, 0.22), chromeMat);
+    const flangeR = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.32, 0.22), chromeMat);
+    flangeL.position.set(-8.94, 6.2, z);
+    flangeR.position.set(8.94, 6.2, z);
+    group.add(flangeL, flangeR);
+  }
+  const lightStripMat = new THREE.MeshBasicMaterial({ color: 0xaabbcc });
+  for (let z = -5; z <= 4; z += 3) {
+    const ls = new THREE.Mesh(new THREE.BoxGeometry(14, 0.06, 0.06), lightStripMat);
+    ls.position.set(0, 6.28, z);
+    group.add(ls);
+    const pl = new THREE.PointLight(0x8899aa, 0.4, 8);
+    pl.position.set(0, 6.0, z);
+    group.add(pl);
+  }
+
+  // Back wall — viewport
+  const backWall = new THREE.Mesh(new THREE.PlaneGeometry(18, 7), darkSteel);
+  backWall.position.set(0, 3.5, -8);
+  group.add(backWall);
+  const winFrameMat = new THREE.MeshPhongMaterial({ color: 0x1e2830, shininess: 100, specular: 0x445566 });
+  const winFrame = new THREE.Mesh(new THREE.BoxGeometry(9.0, 3.2, 0.25), winFrameMat);
+  winFrame.position.set(-0.5, 3.8, -7.88);
+  group.add(winFrame);
+  for (let i = 0; i < 3; i++) {
+    const paneW = 2.7, paneH = 2.6;
+    const pane = new THREE.Mesh(new THREE.PlaneGeometry(paneW, paneH), glassMat);
+    pane.position.set(-2.7 + i * 2.72, 3.8, -7.75);
+    group.add(pane);
+    const pf = new THREE.Mesh(new THREE.BoxGeometry(paneW + 0.08, paneH + 0.08, 0.14), winFrameMat);
+    pf.position.set(-2.7 + i * 2.72, 3.8, -7.82);
+    group.add(pf);
+  }
+  for (let i = 0; i < 2; i++) {
+    const div = new THREE.Mesh(new THREE.BoxGeometry(0.14, 2.8, 0.2), chromeMat);
+    div.position.set(-1.36 + i * 2.72, 3.8, -7.80);
+    group.add(div);
+  }
+
+  // Left wall — equipment racks
+  const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(16, 7), darkSteel);
+  leftWall.rotation.y = Math.PI / 2;
+  leftWall.position.set(-8, 3.5, -1);
+  group.add(leftWall);
+  for (let r = 0; r < 3; r++) {
+    const rack = new THREE.Mesh(new THREE.BoxGeometry(0.22, 2.8, 1.8), panelMat);
+    rack.rotation.y = Math.PI / 2;
+    rack.position.set(-7.89, 1.4, -4 + r * 3.2);
+    group.add(rack);
+    for (let s = 0; s < 5; s++) {
+      const slot = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.28, 1.5), darkSteel);
+      slot.rotation.y = Math.PI / 2;
+      slot.position.set(-7.80, 0.4 + s * 0.5, -4 + r * 3.2);
+      group.add(slot);
+      const ledColor = s === 2 ? 0x00ff44 : s === 4 ? 0xff4400 : 0x004488;
+      const led = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.04), new THREE.MeshBasicMaterial({ color: ledColor }));
+      led.position.set(-7.77, 0.4 + s * 0.5, -4.6 + r * 3.2);
+      group.add(led);
+    }
+  }
+
+  // Right wall — I-beams
+  const rightWall = new THREE.Mesh(new THREE.PlaneGeometry(16, 7), darkSteel);
+  rightWall.rotation.y = -Math.PI / 2;
+  rightWall.position.set(8, 3.5, -1);
+  group.add(rightWall);
+  for (let z = -6; z <= 2; z += 4) {
+    const web = new THREE.Mesh(new THREE.BoxGeometry(0.08, 6, 0.22), steelMat);
+    web.rotation.y = -Math.PI / 2;
+    web.position.set(7.7, 3, z);
+    group.add(web);
+    const flangeTop = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.08, 0.22), chromeMat);
+    flangeTop.rotation.y = -Math.PI / 2;
+    flangeTop.position.set(7.7, 6.0, z);
+    group.add(flangeTop);
+    const flangeBot = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.08, 0.22), chromeMat);
+    flangeBot.rotation.y = -Math.PI / 2;
+    flangeBot.position.set(7.7, 0.04, z);
+    group.add(flangeBot);
+  }
+
+  // Main console (left)
+  const consoleBase = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.9, 1.2), darkSteel);
+  consoleBase.position.set(-3.5, 0.45, -2.0);
+  group.add(consoleBase);
+  const consoleSurface = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.08, 1.2), steelMat);
+  consoleSurface.position.set(-3.5, 0.92, -2.0);
+  consoleSurface.rotation.x = 0.18;
+  group.add(consoleSurface);
+  const screenColors = [0x001a44, 0x001133, 0x002244, 0x001122];
+  for (let i = 0; i < 4; i++) {
+    const scr = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.52, 0.04), panelMat);
+    scr.position.set(-4.8 + i * 0.85, 1.55, -2.3);
+    scr.rotation.x = -0.15;
+    group.add(scr);
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(0.64, 0.44), new THREE.MeshBasicMaterial({ color: screenColors[i] }));
+    face.position.set(-4.8 + i * 0.85, 1.55, -2.28);
+    face.rotation.x = -0.15;
+    group.add(face);
+    const sl = new THREE.PointLight(0x002255, 0.25, 1.5);
+    sl.position.set(-4.8 + i * 0.85, 1.55, -2.1);
+    group.add(sl);
+  }
+  const kb = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.04, 0.35), steelMat);
+  kb.position.set(-3.5, 0.97, -1.6);
+  group.add(kb);
+
+  // Secondary console (right)
+  const con2 = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.1, 0.9), darkSteel);
+  con2.position.set(5.2, 0.55, -1.5);
+  group.add(con2);
+  for (let i = 0; i < 2; i++) {
+    const s2 = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.5, 0.04), panelMat);
+    s2.position.set(4.65 + i * 0.9, 1.38, -1.5);
+    s2.rotation.x = -0.2;
+    group.add(s2);
+    const f2 = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.42), new THREE.MeshBasicMaterial({ color: i ? 0x001a22 : 0x001a00 }));
+    f2.position.set(4.65 + i * 0.9, 1.38, -1.48);
+    f2.rotation.x = -0.2;
+    group.add(f2);
+    const sl2 = new THREE.PointLight(i ? 0x002233 : 0x002200, 0.2, 1.2);
+    sl2.position.set(4.65 + i * 0.9, 1.4, -1.2);
+    group.add(sl2);
+  }
+
+  // Overhead conduit runs
+  const conduitMat = new THREE.MeshPhongMaterial({ color: 0x2a3540, shininess: 40, specular: 0x445566 });
+  for (let c = 0; c < 4; c++) {
+    const conduit = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 16, 6), conduitMat);
+    conduit.rotation.z = Math.PI / 2;
+    conduit.position.set(0, 6.1 + c * 0.1, -3 + c * 0.05);
+    group.add(conduit);
+  }
+  for (let z = -5; z <= 3; z += 2) {
+    const dc = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 5, 6), conduitMat);
+    dc.position.set(-7.4, 3.5, z);
+    group.add(dc);
+  }
+
+  // Floor edge trim
+  const trimMat = new THREE.MeshPhongMaterial({ color: 0x334455, shininess: 120, specular: 0x667788 });
+  const trimF = new THREE.Mesh(new THREE.BoxGeometry(18, 0.06, 0.06), trimMat);
+  trimF.position.set(0, 0.03, 8);
+  group.add(trimF);
+  const trimB = new THREE.Mesh(new THREE.BoxGeometry(18, 0.06, 0.06), trimMat);
+  trimB.position.set(0, 0.03, -8);
+  group.add(trimB);
 
   return group;
 }
@@ -764,8 +969,6 @@ function buildEndurance() {
     }
 
     // Identify module 0 as the primary habitat (where astronaut is)
-    if (i === 0) habitatPod = modGroup;
-
     shipGroup.add(modGroup);
   }
 
@@ -824,61 +1027,7 @@ function buildEndurance() {
     }
   }
 
-  // ── HABITAT INTERIOR (inside module 0) ─────────────────
-  // This is the room where astronaut + TARS stand
-  // It's a child of the ship, positioned inside module 0's volume
-  const habitatInterior = new THREE.Group();
-  // Module 0 is at z=RING_RADIUS (facing outward)
-  // Interior goes slightly inward so astronaut is visible through windows
-
-  // Floor
-  const floorMat = new THREE.MeshPhongMaterial({ color: 0x111820, shininess: 60, specular: 0x223344 });
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 3.8), floorMat);
-  floor.rotation.x = -Math.PI / 2;
-  floor.position.set(0, -1.25, RING_RADIUS);
-  habitatInterior.add(floor);
-
-  // Floor grid
-  const grid = new THREE.GridHelper(3.4, 12, 0x1a2a3a, 0x0f1a24);
-  grid.position.set(0, -1.24, RING_RADIUS);
-  habitatInterior.add(grid);
-
-  // Wall panels (interior walls)
-  const intWallMat = new THREE.MeshPhongMaterial({ color: 0x161c22, shininess: 20 });
-  const backWall = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 2.4), intWallMat);
-  backWall.position.set(0, 0, RING_RADIUS - 1.8);
-  habitatInterior.add(backWall);
-
-  // Console inside habitat
-  const consMat = new THREE.MeshPhongMaterial({ color: 0x0e1218, shininess: 40 });
-  const cons = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.7, 0.6), consMat);
-  cons.position.set(-0.8, -0.9, RING_RADIUS - 1.5);
-  habitatInterior.add(cons);
-
-  // Console screens
-  for (let i = 0; i < 3; i++) {
-    const scrMat = new THREE.MeshBasicMaterial({ color: i===1 ? 0x001a44 : 0x001133 });
-    const scr = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.38, 0.02), scrMat);
-    scr.position.set(-1.4 + i * 0.65, -0.46, RING_RADIUS - 1.19);
-    scr.rotation.x = -0.15;
-    habitatInterior.add(scr);
-    const sl = new THREE.PointLight(0x002255, 0.3, 1.2);
-    sl.position.set(-1.4 + i * 0.65, -0.4, RING_RADIUS - 1.0);
-    habitatInterior.add(sl);
-  }
-
-  // Interior ceiling strip light
-  const intLight = new THREE.PointLight(0x8899cc, 1.2, 6);
-  intLight.position.set(0, 0.8, RING_RADIUS);
-  habitatInterior.add(intLight);
-
-  // Overhead strip
-  const stripMat = new THREE.MeshBasicMaterial({ color: 0xaabbcc });
-  const strip = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.04, 0.06), stripMat);
-  strip.position.set(0, 1.22, RING_RADIUS);
-  habitatInterior.add(strip);
-
-  shipGroup.add(habitatInterior);
+  // Habitat interior removed — replaced by roomContainer with buildSpaceshipInterior()
 
   return shipGroup;
 }
@@ -935,48 +1084,79 @@ function initThree() {
   // Starfield
   scene3.add(buildStarfield());
 
-  // Endurance spaceship
-  enduranceRing = buildEndurance();
-  enduranceRing.scale.set(2.0, 2.0, 2.0);
-  scene3.add(enduranceRing);
+  // Load Endurance GLB (user-made model)
+  const endLoader = new THREE.GLTFLoader();
+  endLoader.load(
+    './Endurance.glb',
+    function(gltf) {
+      enduranceRing = gltf.scene;
+      const box = new THREE.Box3().setFromObject(enduranceRing);
+      const size = box.getSize(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z);
+      const targetSize = 90;
+      enduranceRing.scale.setScalar(targetSize / maxDim);
+      box.setFromObject(enduranceRing);
+      const centre = box.getCenter(new THREE.Vector3());
+      enduranceRing.position.sub(centre);
+      scene3.add(enduranceRing);
+      if (roomContainer) { scene3.remove(roomContainer); enduranceRing.add(roomContainer); }
+    },
+    null,
+    function(err) {
+      console.warn("Endurance.glb not found, using procedural model");
+      enduranceRing = buildEndurance();
+      enduranceRing.scale.set(2.0, 2.0, 2.0);
+      scene3.add(enduranceRing);
+      if (roomContainer) { scene3.remove(roomContainer); enduranceRing.add(roomContainer); }
+    }
+  );
+  // Habitat light (inside the room)
+  const habLight = new THREE.PointLight(0xaabbdd, 2.5, 18);
+  habLight.position.set(0, 5, 0);
 
   const bhLoader = new THREE.GLTFLoader();
-  bhLoader.load('/BlackHole.glb', function(gltf) {
+  bhLoader.load('./BlackHole.glb', function(gltf) {
       const bh = gltf.scene;
-      bh.scale.setScalar(3);          // size — adjust this
-      bh.position.set(1000, -100, -1000);   // away from ship — adjust this
+      bh.scale.setScalar(3);
+      bh.position.set(1000, -100, -1000);
       scene3.add(bh);
   });
 
-  // Interior habitat light — strong to see astronaut when zoomed in
-  const habLight = new THREE.PointLight(0xaabbdd, 2.5, 12);
-  habLight.position.set(0, 2, 44);
-  scene3.add(habLight);
+  // ── ROOM CONTAINER (room + astronaut + TARS parented together) ──
+  roomContainer = new THREE.Group();
+  roomContainer.position.set(7.80, 5.60, 7.50);
+  roomContainer.scale.setScalar(0.20);
 
-  // TARS — placed inside module 0 (at z=RING_RADIUS, offset to side)
-  tarsGroup = buildTARS();
-  tarsGroup.position.set(1.8, -1.25, 44);
-  tarsGroup.rotation.y = -0.4;
-  scene3.add(tarsGroup);
+  // Room interior
+  const room = buildSpaceshipInterior();
+  roomContainer.add(room);
 
-  // Risk ring — around astronaut position inside habitat
-  riskRingMat = new THREE.MeshBasicMaterial({ color: 0x00e87a, transparent: true, opacity: 0.55 });
-  riskRing = new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.04, 8, 80), riskRingMat);
-  habLight.position.set(0, 2, 44);
-  riskRing.rotation.x = Math.PI / 2;
-  scene3.add(riskRing);
-
-  // Astronaut group — inside habitat module 0
+  // Astronaut — relative to room center
   astronaut = new THREE.Group();
-  astronaut.position.set(-0.3, -1.25, 44);
-  scene3.add(astronaut);
-
+  astronaut.position.set(0, 0.40, 0.10);
+  roomContainer.add(astronaut);
   loadAstronautGLB();
 
-  astronaut.position.y -= 1.2;
-  tarsGroup.position.y -= 0.7;
-  astronaut.rotation.z = Math.PI / 18;   // tilt 90° — adjust this angle
-  tarsGroup.rotation.z = Math.PI / 18;
+  // TARS — relative to room center
+  tarsGroup = buildTARS();
+  tarsGroup.position.set(2.90, 0.00, 0.10);
+  tarsGroup.rotation.y = -0.65;
+  roomContainer.add(tarsGroup);
+
+  // Risk ring — around astronaut
+  riskRingMat = new THREE.MeshBasicMaterial({ color: 0x00e87a, transparent: true, opacity: 0.55 });
+  riskRing = new THREE.Mesh(new THREE.TorusGeometry(1.1, 0.04, 8, 80), riskRingMat);
+  riskRing.position.set(0, 1.5, 0);
+  roomContainer.add(riskRing);
+
+  // Habitat light — parented to room
+  roomContainer.add(habLight);
+
+  scene3.add(roomContainer);
+
+  // astroLookTarget stores a LOCAL-to-astronaut offset (e.g. head height)
+  // loopThree adds this to the astronaut's world position each frame
+  astroLookTarget = new THREE.Vector3(astroCamDefault.lookX, astroCamDefault.lookY, astroCamDefault.lookZ);
 
   threeOK = true;
 
@@ -1039,7 +1219,19 @@ function initThree() {
 
   cv.addEventListener('dblclick', () => { setCamMode(camMode); });
 
-  astroLookTarget = new THREE.Vector3(-0.3, -1.65, 44);
+  // Keep debug sliders in sync when user drags canvas
+  function syncCamSliders() {
+    if (!dbOpen) return;
+    const thEl = document.getElementById("db-cth");
+    const phEl = document.getElementById("db-cph");
+    const crEl = document.getElementById("db-cr");
+    if (thEl) { thEl.value = Math.round(camState.theta * 100); document.getElementById("db-cthv").textContent = (camState.theta * 180 / Math.PI).toFixed(0) + "°"; }
+    if (phEl) { phEl.value = Math.round(camState.phi * 100);   document.getElementById("db-cphv").textContent = (camState.phi * 180 / Math.PI).toFixed(0) + "°"; }
+    if (crEl) { crEl.value = Math.round(camState.radius * 10); document.getElementById("db-crv").textContent = camState.radius.toFixed(1); }
+  }
+  window.addEventListener('mousemove', () => { if (camState.isDragging) syncCamSliders(); });
+  cv.addEventListener('touchmove',     () => { syncCamSliders(); }, { passive: true });
+  cv.addEventListener('wheel',         () => { syncCamSliders(); }, { passive: true });
 
   loopThree();
 }
@@ -1051,7 +1243,7 @@ function loadAstronautGLB() {
   }
   const loader = new THREE.GLTFLoader();
   loader.load(
-    '/Astronaut.glb',
+    './Astronaut.glb',
     function(gltf) {
       while (astronaut.children.length > 0) astronaut.remove(astronaut.children[0]);
       const model = gltf.scene;
@@ -1090,26 +1282,78 @@ function buildFallbackAstronaut() {
 
 let camMode = 'ship';
 
+// Default astronaut camera position (can be overridden via "Set as Default" button)
+const astroCamDefault = { radius: 5.6, theta: 0.08, phi: 0.0873, targetY: 1.8, lookX: -0.3, lookY: 0.0, lookZ: -4.1 };
+
 function setCamMode(mode) {
   camMode = mode;
   if (mode === 'ship') {
-    cam3.up.set(0, 1, 0); 
+    cam3.up.set(0, 1, 0);
     camState.radius = 110; camState.theta = 0.4; camState.phi = 0.1;
     camState.targetY = 0; camState.autoRotate = true;
     document.getElementById('btn-cam-ship').style.borderColor = 'var(--cyan)';
     document.getElementById('btn-cam-ship').style.color = 'var(--cyan)';
     document.getElementById('btn-cam-astro').style.borderColor = '';
     document.getElementById('btn-cam-astro').style.color = '';
+    const btn = document.getElementById('btn-set-astro-cam');
+    if (btn) btn.style.display = 'none';
   } else {
-    enduranceRing.rotation.z = 0.15;
-    cam3.up.set(-0.15, 1, 0);
-    camState.radius = 4.3; camState.theta = 0; camState.phi = 0.2;
-    camState.targetY = 0; camState.autoRotate = false;
+    cam3.up.set(0, 1, 0);
+    camState.radius  = astroCamDefault.radius;
+    camState.theta   = astroCamDefault.theta;
+    camState.phi     = astroCamDefault.phi;
+    camState.targetY = astroCamDefault.targetY;
+    camState.autoRotate = false;
+    if (astroLookTarget) astroLookTarget.set(astroCamDefault.lookX, astroCamDefault.lookY, astroCamDefault.lookZ);
     document.getElementById('btn-cam-astro').style.borderColor = 'var(--cyan)';
     document.getElementById('btn-cam-astro').style.color = 'var(--cyan)';
     document.getElementById('btn-cam-ship').style.borderColor = '';
     document.getElementById('btn-cam-ship').style.color = '';
+    const btn = document.getElementById('btn-set-astro-cam');
+    if (btn) btn.style.display = '';
   }
+}
+
+function setAstroCamAsDefault() {
+  // Save camera orbit state (always live from camState)
+  astroCamDefault.radius  = camState.radius;
+  astroCamDefault.theta   = camState.theta;
+  astroCamDefault.phi     = camState.phi;
+  astroCamDefault.targetY = camState.targetY;
+
+  // Save look target — read from sliders if panel is open, else from astroLookTarget
+  const cxEl = document.getElementById("db-cx");
+  if (cxEl) {
+    astroCamDefault.lookX = parseFloat(cxEl.value) / 10;
+    astroCamDefault.lookY = parseFloat(document.getElementById("db-cy").value) / 10;
+    astroCamDefault.lookZ = parseFloat(document.getElementById("db-cz").value) / 10;
+  } else if (astroLookTarget) {
+    astroCamDefault.lookX = astroLookTarget.x;
+    astroCamDefault.lookY = astroLookTarget.y;
+    astroCamDefault.lookZ = astroLookTarget.z;
+  }
+
+  // Sync debug sliders to saved values so panel stays consistent
+  if (cxEl) {
+    document.getElementById("db-cth").value = Math.round(astroCamDefault.theta * 100);
+    document.getElementById("db-cph").value = Math.round(astroCamDefault.phi * 100);
+    document.getElementById("db-cr").value  = Math.round(astroCamDefault.radius * 10);
+    document.getElementById("db-cthv").textContent = (astroCamDefault.theta * 180 / Math.PI).toFixed(0) + "°";
+    document.getElementById("db-cphv").textContent = (astroCamDefault.phi  * 180 / Math.PI).toFixed(0) + "°";
+    document.getElementById("db-crv").textContent  = astroCamDefault.radius.toFixed(1);
+  }
+
+  const btn = document.getElementById('btn-set-astro-cam');
+  if (!btn) return;
+  const orig = btn.textContent;
+  btn.textContent = '✓ POSITION SAVED';
+  btn.style.borderColor = 'var(--green)';
+  btn.style.color = 'var(--green)';
+  setTimeout(() => {
+    btn.textContent = orig;
+    btn.style.borderColor = 'var(--amber)';
+    btn.style.color = 'var(--amber)';
+  }, 1400);
 }
 
 let _t3last = 0, _simState = null;
@@ -1123,33 +1367,52 @@ function loopThree(ts = 0) {
   const t = ts * 0.001;
 
   // ── DYNAMIC CAMERA TARGET ──────────────────────────────
-  // When zoomed in (radius < ~15), look at habitat interior; 
-  // when zoomed out, look at ship center
   let lookTargetX = 0, lookTargetY = camState.targetY, lookTargetZ = 0;
-  if (camMode === 'astro') {
-      lookTargetX = astroLookTarget.x;
-      lookTargetY = astroLookTarget.y;
-      lookTargetZ = astroLookTarget.z;
-  }
 
   // ── CAMERA ORBIT ───────────────────────────────────────
   if (camState.autoRotate) {
     camState.theta += 0.003;
   }
-  const cx = lookTargetX + camState.radius * Math.cos(camState.phi) * Math.sin(camState.theta);
-  const cy = lookTargetY + camState.radius * Math.sin(camState.phi);
-  const cz = lookTargetZ + camState.radius * Math.cos(camState.phi) * Math.cos(camState.theta);
-  cam3.position.set(cx, cy, cz);
+
+  if (camMode === 'astro' && astronaut && astroLookTarget && roomContainer) {
+    // Compute orbit in roomContainer local space so camera stays fixed
+    // relative to the room regardless of the Endurance ring's rotation.
+    const roomQuat = new THREE.Quaternion();
+    roomContainer.getWorldQuaternion(roomQuat);
+
+    // Look target = astronaut world pos + astroLookTarget rotated by room orientation
+    const aw = new THREE.Vector3();
+    astronaut.getWorldPosition(aw);
+    const rotatedLook = astroLookTarget.clone().applyQuaternion(roomQuat);
+    lookTargetX = aw.x + rotatedLook.x;
+    lookTargetY = aw.y + rotatedLook.y;
+    lookTargetZ = aw.z + rotatedLook.z;
+
+    // Orbit offset expressed in room-local space, then rotated to world
+    const localOffset = new THREE.Vector3(
+      camState.radius * Math.cos(camState.phi) * Math.sin(camState.theta),
+      camState.radius * Math.sin(camState.phi),
+      camState.radius * Math.cos(camState.phi) * Math.cos(camState.theta)
+    ).applyQuaternion(roomQuat);
+
+    cam3.position.set(lookTargetX + localOffset.x, lookTargetY + localOffset.y, lookTargetZ + localOffset.z);
+  } else {
+    const cx = lookTargetX + camState.radius * Math.cos(camState.phi) * Math.sin(camState.theta);
+    const cy = lookTargetY + camState.radius * Math.sin(camState.phi);
+    const cz = lookTargetZ + camState.radius * Math.cos(camState.phi) * Math.cos(camState.theta);
+    cam3.position.set(cx, cy, cz);
+  }
   cam3.lookAt(lookTargetX, lookTargetY, lookTargetZ);
 
   // ── ENDURANCE RING SLOW ROTATION ───────────────────────
   if (enduranceRing && camMode === 'ship') {
-    enduranceRing.rotation.z += 0.0018;
+    enduranceRing.rotation.y += 0.0018;
   }
+  // roomContainer is child of enduranceRing — rotation inherited automatically
 
   // ── TARS ANIMATION ─────────────────────────────────────
   if (tarsGroup) {
-    tarsGroup.rotation.y = -0.4 + Math.sin(t * 0.3) * 0.06;
+    tarsGroup.rotation.y = -0.65 + Math.sin(t * 0.3) * 0.06;
     const scan = tarsGroup.getObjectByName('tars_scan');
     if (scan) scan.position.y = 0.15 + Math.sin(t * 1.8) * 0.25;
     if (tarsScreenMat) {
@@ -1164,15 +1427,18 @@ function loopThree(ts = 0) {
 
   const { fatigue, hr, smsSev, stress, risk, phase } = _simState;
 
-  // Astronaut phase animations
+  // Astronaut phase animations (v1-style, relative to room center)
   if (phase === 'SLEEP') {
-    astronaut.rotation.x += ((-Math.PI / 2.4) - astronaut.rotation.x) * 0.04;
-    astronaut.position.y += (-1.8 - astronaut.position.y);
-    aimb.intensity += (0.5 - aimb.intensity) * 0.03;
+    astronaut.rotation.x += ((-Math.PI / 2) - astronaut.rotation.x) * 0.04;
+    // Lift body to ring centre (ring is at y=1.5 in roomContainer) so astronaut floats centred inside ring
+    astronaut.position.y += (1 - astronaut.position.y) * 0.04;
+    astronaut.position.z += (0.10 - astronaut.position.z) * 0.04;
+    aimb.intensity += (0.7 - aimb.intensity) * 0.03;
   } else {
     astronaut.rotation.x += (0 - astronaut.rotation.x) * 0.04;
-    astronaut.position.y += (-2.45 - astronaut.position.y);
-    aimb.intensity += (1.0 - aimb.intensity) * 0.03;
+    astronaut.position.y += (0.40 - astronaut.position.y) * 0.04;
+    astronaut.position.z += (0.10 - astronaut.position.z) * 0.04;
+    aimb.intensity += (1.4 - aimb.intensity) * 0.03;
   }
 
   const swaySpeed = 1.2 - fatigue * 0.8;
@@ -1180,9 +1446,9 @@ function loopThree(ts = 0) {
 
   if (smsSev > 0.1) {
     astronaut.rotation.z += Math.sin(t * 4.5) * smsSev * 0.09;
-    astronaut.position.x = -0.3 + Math.sin(t * 3.8) * smsSev * 0.06;
+    astronaut.position.x = Math.sin(t * 3.8) * smsSev * 0.06;
   } else {
-    astronaut.position.x += (-0.3 - astronaut.position.x) * 0.05;
+    astronaut.position.x *= 0.95;
   }
 
   const hrRad = (hr / 60) * 2 * Math.PI;
@@ -1200,6 +1466,7 @@ function loopThree(ts = 0) {
   const rc = risk < 0.4 ? new THREE.Color(0x00e87a) : risk < 0.7 ? new THREE.Color(0xffaa00) : new THREE.Color(0xff4040);
   riskRingMat.color.lerp(rc, 0.08);
   riskRing.position.x = astronaut.position.x;
+  riskRing.position.z = astronaut.position.z;
   riskRing.rotation.z = t * 0.8;
 
   renderer3.render(scene3, cam3);
@@ -1312,8 +1579,28 @@ function playLoop(ts) {
   const fat  = state.fatigue[idx];
   const hr   = Math.round(state.hr[idx]);
   const slp  = state.sleep_quality[idx];
-  const str  = state.stress ? state.stress[idx] : 0;
-  const spo2 = state.spo2 ? state.spo2[idx] : 98;
+  // Motion severity from state (0-5 scale, normalise to 0-1)
+  const motRaw = Array.isArray(state.motion_severity) ? (state.motion_severity[idx] || 0) : 0;
+  const mot01  = Math.min(1, motRaw / 5.0);
+  // Fatigue normalised from 0-10 to 0-1
+  const fat01  = Math.min(1, state.fatigue[idx] / 10.0);
+  // Hour within day for circadian component
+  const dayHour = (state.time[idx] / 60.0) % 24;
+  // Circadian: peaks at ~14:00, lowest at 04:00
+  const circ = 0.08 + 0.07 * Math.sin(2 * Math.PI * (dayHour - 4) / 24);
+  // Stress from backend if populated and non-trivial
+  const backendStr = Array.isArray(state.stress) && state.stress[idx] > 0.01 ? state.stress[idx] : null;
+  // Always derive stress — combines baseline + circadian + fatigue + motion
+  // Baseline 0.12 = minimum space-mission stress. Fatigue drives chronic stress.
+  const derivedStr = Math.min(0.95,
+    0.12 +               // baseline mission stress (never 0)
+    circ +               // circadian rhythm
+    fat01 * 0.42 +       // fatigue → chronic stress
+    mot01 * 0.55         // active SMS → acute stress spike
+  );
+  const str  = backendStr !== null ? Math.max(backendStr, derivedStr * 0.7) : derivedStr;
+  // SpO2: drops slightly with high stress and fatigue
+  const spo2 = Math.max(93.0, 98.8 - str * 2.4 - fat01 * 1.2);
   const phase = getPhaseFromTime(timeH);
 
   const rsk = Math.min(1, (fat/10)*0.5 + (str||0)*0.3 + Math.max(0, (1-slp))*0.2);
@@ -1455,9 +1742,9 @@ function showReport() {
 
 const sliders = [
   ['ctrl-cyc', 'lbl-cyc', v=>`${v} days`],
-  ['ctrl-hr',  'lbl-hr',  v=>`${v} bpm`],
-  ['ctrl-sq',  'lbl-sq',  v=>(v/10).toFixed(2)],
-  ['ctrl-fat', 'lbl-fat', v=>(v/10).toFixed(1)],
+  ['ctrl-lam',  'lbl-lam',  v=>(v/10).toFixed(2)+'/day'],
+  ['ctrl-rec',  'lbl-rec',  v=>(v/10).toFixed(1)+'×'],
+  ['ctrl-fsens','lbl-fsens',v=>(v/10).toFixed(1)+'×'],
   ['ctrl-spd', 'lbl-spd', v=>`${(10/(v/3)).toFixed(0)}s/day`],
 ];
 sliders.forEach(([id,lid,fmt])=>{
@@ -1599,6 +1886,283 @@ window.addEventListener('load', () => {
   initCharts();
   checkHealth();
 });
+</script>
+
+
+<div id="dbpanel">
+  <h4>ASTRONAUT POSITION TOOL</h4>
+
+  <div class="dsec">ROOM CONTROLS (move entire room+astro+TARS)</div>
+  <div class="drow">
+    <span class="dlbl">RX ←→</span>
+    <button class="dcoarse" onclick="nudge('rx',-1)">◀</button>
+    <input type="range" id="db-rx" min="-5000" max="5000" value="26" step="1" oninput="applyPos()">
+    <button class="dcoarse" onclick="nudge('rx',1)">▶</button>
+    <span class="dval" id="db-rxv">2.6</span>
+  </div>
+  <div class="drow">
+    <span class="dlbl">RY ↑↓</span>
+    <button class="dcoarse" onclick="nudge('rY',-1)">▼</button>
+    <input type="range" id="db-rY" min="-5000" max="5000" value="58" step="1" oninput="applyPos()">
+    <button class="dcoarse" onclick="nudge('rY',1)">▲</button>
+    <span class="dval" id="db-rYv">5.8</span>
+  </div>
+  <div class="drow">
+    <span class="dlbl">RZ ↙↗</span>
+    <button class="dcoarse" onclick="nudge('rz',-1)">◀</button>
+    <input type="range" id="db-rz" min="-5000" max="5000" value="102" step="1" oninput="applyPos()">
+    <button class="dcoarse" onclick="nudge('rz',1)">▶</button>
+    <span class="dval" id="db-rzv">10.2</span>
+  </div>
+  <div class="drow">
+    <span class="dlbl">RSCALE</span>
+    <button class="dcoarse" onclick="nudge('rs',-1)">−</button>
+    <input type="range" id="db-rs" min="1" max="200" value="20" step="1" oninput="applyPos()">
+    <button class="dcoarse" onclick="nudge('rs',1)">+</button>
+    <span class="dval" id="db-rsv">2.0×</span>
+  </div>
+
+  <div class="dsec">ASTRONAUT POSITION (inside room)</div>
+  <div class="drow">
+    <span class="dlbl">X  ←→</span>
+    <button class="dcoarse" onclick="nudge('x',-1)">◀</button>
+    <input type="range" id="db-x" min="-500" max="500" value="0" step="1" oninput="applyPos()">
+    <button class="dcoarse" onclick="nudge('x',1)">▶</button>
+    <span class="dval" id="db-xv">0.0</span>
+  </div>
+  <div class="drow">
+    <span class="dlbl">Y  ↑↓</span>
+    <button class="dcoarse" onclick="nudge('y',-1)">▼</button>
+    <input type="range" id="db-y" min="-500" max="500" value="0" step="1" oninput="applyPos()">
+    <button class="dcoarse" onclick="nudge('y',1)">▲</button>
+    <span class="dval" id="db-yv">0.0</span>
+  </div>
+  <div class="drow">
+    <span class="dlbl">Z  ↙↗</span>
+    <button class="dcoarse" onclick="nudge('z',-1)">◀</button>
+    <input type="range" id="db-z" min="-500" max="500" value="1" step="1" oninput="applyPos()">
+    <button class="dcoarse" onclick="nudge('z',1)">▶</button>
+    <span class="dval" id="db-zv">0.1</span>
+  </div>
+
+  <div class="dsec">ASTRONAUT SCALE & ROTATION</div>
+  <div class="drow">
+    <span class="dlbl">SCALE</span>
+    <button class="dcoarse" onclick="nudge('s',-1)">−</button>
+    <input type="range" id="db-s" min="1" max="200" value="10" step="1" oninput="applyPos()">
+    <button class="dcoarse" onclick="nudge('s',1)">+</button>
+    <span class="dval" id="db-sv">1.0×</span>
+  </div>
+  <div class="drow">
+    <span class="dlbl">ROT Y</span>
+    <button class="dcoarse" onclick="nudge('ry',-5)">◀</button>
+    <input type="range" id="db-ry" min="-180" max="180" value="0" step="5" oninput="applyPos()">
+    <button class="dcoarse" onclick="nudge('ry',5)">▶</button>
+    <span class="dval" id="db-ryv">0°</span>
+  </div>
+
+  <div class="dsec">TARS OFFSET FROM ASTRONAUT</div>
+  <div class="drow">
+    <span class="dlbl">TX</span>
+    <button class="dcoarse" onclick="nudge('tx',-1)">◀</button>
+    <input type="range" id="db-tx" min="-100" max="100" value="28" step="1" oninput="applyPos()">
+    <button class="dcoarse" onclick="nudge('tx',1)">▶</button>
+    <span class="dval" id="db-txv">+2.8</span>
+  </div>
+
+  <div class="dsec">CAMERA MODE</div>
+  <div style="display:flex;gap:6px">
+    <button class="dcoarse" style="width:100%;font-size:9px;letter-spacing:1px" onclick="setCamMode('astro')">ASTRONAUT VIEW</button>
+    <button class="dcoarse" style="width:100%;font-size:9px;letter-spacing:1px" onclick="setCamMode('ship')">SHIP VIEW</button>
+  </div>
+
+  <div class="dsec">CAMERA POSITION (astro view)</div>
+  <div class="drow">
+    <span class="dlbl">CX ←→</span>
+    <button class="dcoarse" onclick="nudge('cx',-1)">◀</button>
+    <input type="range" id="db-cx" min="-200" max="200" value="-3" step="1" oninput="applyPos()">
+    <button class="dcoarse" onclick="nudge('cx',1)">▶</button>
+    <span class="dval" id="db-cxv">0.0</span>
+  </div>
+  <div class="drow">
+    <span class="dlbl">CY ↑↓</span>
+    <button class="dcoarse" onclick="nudge('cy',-1)">▼</button>
+    <input type="range" id="db-cy" min="-200" max="200" value="0" step="1" oninput="applyPos()">
+    <button class="dcoarse" onclick="nudge('cy',1)">▲</button>
+    <span class="dval" id="db-cyv">3.0</span>
+  </div>
+  <div class="drow">
+    <span class="dlbl">CZ ↙↗</span>
+    <button class="dcoarse" onclick="nudge('cz',-1)">◀</button>
+    <input type="range" id="db-cz" min="-200" max="200" value="-41" step="1" oninput="applyPos()">
+    <button class="dcoarse" onclick="nudge('cz',1)">▶</button>
+    <span class="dval" id="db-czv">0.0</span>
+  </div>
+  <div class="drow">
+    <span class="dlbl">RADIUS</span>
+    <button class="dcoarse" onclick="nudge('cr',-1)">−</button>
+    <input type="range" id="db-cr" min="10" max="300" value="56" step="1" oninput="applyPos()">
+    <button class="dcoarse" onclick="nudge('cr',1)">+</button>
+    <span class="dval" id="db-crv">5.8</span>
+  </div>
+  <div class="drow">
+    <span class="dlbl">THETA ↔</span>
+    <button class="dcoarse" onclick="nudge('cth',-10)">◀</button>
+    <input type="range" id="db-cth" min="-314" max="314" value="7" step="1" oninput="applyPos()">
+    <button class="dcoarse" onclick="nudge('cth',10)">▶</button>
+    <span class="dval" id="db-cthv">0°</span>
+  </div>
+  <div class="drow">
+    <span class="dlbl">PHI ↕</span>
+    <button class="dcoarse" onclick="nudge('cph',-5)">▼</button>
+    <input type="range" id="db-cph" min="-80" max="80" value="9" step="1" oninput="applyPos()">
+    <button class="dcoarse" onclick="nudge('cph',5)">▲</button>
+    <span class="dval" id="db-cphv">0.38</span>
+  </div>
+
+  <div class="dcode" id="db-code" onclick="copyCode()" title="Click to copy">
+    astronaut.position.set(0, 0, 0)
+  </div>
+  <div class="dhint">▲ Click to copy permanent coordinates.<br>Paste into initScene() to lock position.</div>
+</div>
+
+<script>
+// ── Debug positioning tool ──────────────────────────────────────
+let dbAxes = null, dbOpen = false;
+
+function toggleDebug() {
+  dbOpen = !dbOpen;
+  document.getElementById("dbpanel").style.display = dbOpen ? "block" : "none";
+  document.getElementById("dbtn").classList.toggle("active", dbOpen);
+  if (dbOpen) {
+    setCamMode("astro");
+    if (!dbAxes && scene3) {
+      dbAxes = new THREE.AxesHelper(12);
+      scene3.add(dbAxes);
+    }
+    if (dbAxes) dbAxes.visible = true;
+    // Sync sliders FROM current state — never overwrite with defaults
+    if (roomContainer) {
+      document.getElementById("db-rx").value = Math.round(roomContainer.position.x * 10);
+      document.getElementById("db-rY").value = Math.round(roomContainer.position.y * 10);
+      document.getElementById("db-rz").value = Math.round(roomContainer.position.z * 10);
+      document.getElementById("db-rs").value = Math.round(roomContainer.scale.x * 10);
+    }
+    if (astronaut) {
+      document.getElementById("db-x").value = Math.round(astronaut.position.x * 10);
+      document.getElementById("db-y").value = Math.round(astronaut.position.y * 10);
+      document.getElementById("db-z").value = Math.round(astronaut.position.z * 10);
+      document.getElementById("db-s").value = Math.round(astronaut.scale.x * 10);
+      document.getElementById("db-ry").value = Math.round(astronaut.rotation.y * 180 / Math.PI);
+    }
+    // Sync all camera sliders from live state
+    document.getElementById("db-cth").value = Math.round(camState.theta * 100);
+    document.getElementById("db-cph").value = Math.round(camState.phi * 100);
+    document.getElementById("db-cr").value  = Math.round(camState.radius * 10);
+    if (astroLookTarget) {
+      document.getElementById("db-cx").value = Math.round(astroLookTarget.x * 10);
+      document.getElementById("db-cy").value = Math.round(astroLookTarget.y * 10);
+      document.getElementById("db-cz").value = Math.round(astroLookTarget.z * 10);
+    }
+  } else {
+    if (dbAxes) dbAxes.visible = false;
+  }
+}
+
+// Coarse nudge buttons (each click = 1 unit)
+function nudge(axis, dir) {
+  const el = document.getElementById("db-" + axis);
+  el.value = +el.value + dir;
+  applyPos();
+}
+
+function applyPos() {
+  if (!astronaut || !tarsGroup || !roomContainer) return;
+
+  // ── Room controls ──
+  const rx  = document.getElementById("db-rx").value / 10;
+  const rY  = document.getElementById("db-rY").value / 10;
+  const rz  = document.getElementById("db-rz").value / 10;
+  const rs  = document.getElementById("db-rs").value / 10;
+
+  roomContainer.position.set(rx, rY, rz);
+  roomContainer.scale.setScalar(rs);
+
+  // ── Astronaut controls (relative to room) ──
+  const x  = document.getElementById("db-x").value / 10;
+  const y  = document.getElementById("db-y").value / 10;
+  const z  = document.getElementById("db-z").value / 10;
+  const s  = document.getElementById("db-s").value / 10;
+  const ry = document.getElementById("db-ry").value * Math.PI / 180;
+  const tx = document.getElementById("db-tx").value / 10;
+
+  astronaut.position.set(x, y, z);
+  astronaut.scale.setScalar(s);
+  astronaut.rotation.y = ry;
+
+  tarsGroup.position.set(x + tx, y, z);
+  tarsGroup.scale.setScalar(s * 0.85);
+  tarsGroup.rotation.y = ry + 0.4;
+
+  if (riskRing) riskRing.position.set(x, y + 1.5 * s, z);
+
+  // Camera look target (relative to room center)
+  const cx = document.getElementById("db-cx").value / 10;
+  const cy = document.getElementById("db-cy").value / 10;
+  const cz = document.getElementById("db-cz").value / 10;
+  const cr = document.getElementById("db-cr").value / 10;
+
+  if (astroLookTarget) astroLookTarget.set(cx, cy, cz);
+  if (camMode === 'astro') {
+    camState.radius = cr;
+    camState.theta  = document.getElementById("db-cth").value / 100;
+    camState.phi    = Math.max(-Math.PI/2.2, Math.min(Math.PI/2.2,
+                        document.getElementById("db-cph").value / 100));
+    camState.autoRotate = false;
+  }
+
+  // Axes at astronaut world position
+  if (dbAxes) {
+    const wp = new THREE.Vector3();
+    astronaut.getWorldPosition(wp);
+    dbAxes.position.copy(wp);
+  }
+
+  // Update display values
+  document.getElementById("db-rxv").textContent  = (+rx).toFixed(1);
+  document.getElementById("db-rYv").textContent  = (+rY).toFixed(1);
+  document.getElementById("db-rzv").textContent  = (+rz).toFixed(1);
+  document.getElementById("db-rsv").textContent  = (+rs).toFixed(1) + "×";
+  document.getElementById("db-xv").textContent   = (+x).toFixed(1);
+  document.getElementById("db-yv").textContent   = (+y).toFixed(1);
+  document.getElementById("db-zv").textContent   = (+z).toFixed(1);
+  document.getElementById("db-sv").textContent   = (+s).toFixed(1) + "×";
+  document.getElementById("db-ryv").textContent  = document.getElementById("db-ry").value + "°";
+  document.getElementById("db-txv").textContent  = "+" + (+tx).toFixed(1);
+  document.getElementById("db-cxv").textContent  = (+cx).toFixed(1);
+  document.getElementById("db-cyv").textContent  = (+cy).toFixed(1);
+  document.getElementById("db-czv").textContent  = (+cz).toFixed(1);
+  document.getElementById("db-crv").textContent  = (+cr).toFixed(1);
+  document.getElementById("db-cthv").textContent = (camState.theta * 180 / Math.PI).toFixed(0) + "°";
+  document.getElementById("db-cphv").textContent = (camState.phi * 180 / Math.PI).toFixed(0) + "°";
+
+  // Update copy-able code
+  const code = `roomContainer.position.set(${(+rx).toFixed(2)}, ${(+rY).toFixed(2)}, ${(+rz).toFixed(2)});\n`
+    + `roomContainer.scale.setScalar(${(+rs).toFixed(2)});\n`
+    + `astronaut.position.set(${(+x).toFixed(2)}, ${(+y).toFixed(2)}, ${(+z).toFixed(2)});\n`
+    + `tarsGroup.position.set(${(+(x+tx)).toFixed(2)}, ${(+y).toFixed(2)}, ${(+z).toFixed(2)});`;
+  document.getElementById("db-code").textContent = code;
+}
+
+function copyCode() {
+  const code = document.getElementById("db-code").textContent;
+  navigator.clipboard.writeText(code).then(() => {
+    const el = document.getElementById("db-code");
+    const orig = el.style.borderColor;
+    el.style.borderColor = "#00d4ff";
+    setTimeout(() => el.style.borderColor = orig, 800);
+  });
+}
 </script>
 </body>
 </html>

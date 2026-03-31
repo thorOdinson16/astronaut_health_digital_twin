@@ -443,8 +443,46 @@ async def execute_simulation(
                 coupling_effects=coupling_effects
             )
             
+            # ── Compute and store stress at every timestep ──────────────
+            # Stress = acute (event-driven) + chronic (fatigue-driven)
+            # This was never written to state before — fixed here.
+            new_events = event_summary.get('new_events', [])
+            # Note: active_events from scheduler is an int (count), not a list
+
+            # Acute stress: check new SMS events this timestep
+            sms_events = [e for e in new_events
+                          if 'motion' in e.get('type', '').lower()]
+            sms_severity = max((e.get('severity', 0) for e in sms_events), default=0.0)
+
+            # Chronic stress: builds with fatigue, circadian rhythm, workload
+            current_fat = float(state.fatigue[t-1]) if t > 0 else config.initial_fatigue
+            time_h = float(state.time[t]) / 60.0  # minutes -> hours
+            # Circadian component: higher stress during work hours (8-18h cycle)
+            import math
+            circadian_stress = 0.08 + 0.06 * math.sin(2 * math.pi * (time_h % 24) / 24 - math.pi / 2)
+            # Fatigue-driven chronic stress (normalized 0-10 scale)
+            fatigue_stress = min(0.45, (current_fat / 10.0) * 0.60)
+            # Acute SMS stress (spikes then decays)
+            acute_stress = min(0.50, float(sms_severity) * 0.70)
+            # Baseline mission stress (astronauts always have some)
+            baseline_stress = 0.12
+
+            total_stress = min(0.95, baseline_stress + circadian_stress + fatigue_stress + acute_stress)
+            state.update(t, stress=total_stress)
+
+            # BUG 7 FIX: fatigue updates EVERY timestep, not just on SMS events
+            if t > 0:
+                mot_sev = float(state.motion_severity[t]) if hasattr(state, 'motion_severity') else 0.0
+                new_fatigue, _ = fatigue_model.compute_fatigue_update(
+                    current_fatigue=state.fatigue[t-1],
+                    sleep_quality=state.sleep_quality[t],
+                    motion_severity=mot_sev,
+                    dt_hours=dt_hours
+                )
+                state.update(t, fatigue=new_fatigue)
+
             # If motion sickness event occurred and BioGears is enabled,
-            # call Person 2's code for detailed physiology
+            # call BioGears for detailed physiological response
             if config.use_biogears and biogears:
                 for event in event_summary.get('new_events', []):
                     if event['type'] == 'MotionSicknessEvent':
@@ -455,21 +493,9 @@ async def execute_simulation(
                             'baseline_hr': config.baseline_hr,
                             'fatigue_level': float(state.fatigue[t-1]) if t > 0 else 0.0,
                         }
-
                         bio_response = await biogears.run_perturbation_async(perturbation)
-
                         if bio_response:
-                            state.update(t, hr=min(bio_response.get('hr', state.hr[t]), 160.0))
-                        
-                        # Update fatigue using our model
-                        if t > 0:
-                            new_fatigue, components = fatigue_model.compute_fatigue_update(
-                                current_fatigue=state.fatigue[t-1],
-                                sleep_quality=state.sleep_quality[t],
-                                motion_severity=state.motion_severity[t],
-                                dt_hours=dt_hours
-                            )
-                            state.update(t, fatigue=new_fatigue)
+                            state.update(t, hr=min(float(bio_response.get('hr', state.hr[t])), 160.0))
         
         # =====================================================================
         # 4. STORE RESULTS
