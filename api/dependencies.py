@@ -266,6 +266,70 @@ class SimulationManager:
         await self._save_metadata()
         logger.info(f"Stored results for run {run_id}")
     
+    async def store_analytics(
+        self,
+        run_id:       str,
+        risk_report:  dict,
+        trend_report: dict,
+        risk_trace:   list,
+    ):
+        """
+        Persist risk and trend analytics for a completed run.
+        Stored as analytics.json in the run directory.
+        """
+        run_dir = self.storage_path / run_id
+        ensure_directory(run_dir)
+ 
+        analytics = {
+            "risk_report":  risk_report,
+            "trend_report": trend_report,
+            "risk_trace":   risk_trace,
+        }
+ 
+        analytics_file = run_dir / "analytics.json"
+        with self._file_lock:
+            with open(analytics_file, "w") as f:
+                import json
+                json.dump(analytics, f, indent=2, cls=NumpyEncoder)
+ 
+        # Also cache on the run object for fast in-process access
+        async with self._lock:
+            if run_id in self.runs:
+                self.runs[run_id].analytics = analytics
+ 
+        logger.info(f"Stored analytics for run {run_id}")
+ 
+    async def get_analytics(self, run_id: str) -> dict | None:
+        """
+        Return cached or disk-loaded analytics for a completed run.
+        Returns None if analytics have not been computed yet.
+        """
+        run = self.get_run(run_id)
+        if not run:
+            return None
+ 
+        # Check in-memory cache first
+        cached = getattr(run, "analytics", None)
+        if cached:
+            return cached
+ 
+        # Fall back to disk
+        analytics_file = self.storage_path / run_id / "analytics.json"
+        if not analytics_file.exists():
+            return None
+ 
+        try:
+            with self._file_lock:
+                import json
+                with open(analytics_file, "r") as f:
+                    analytics = json.load(f)
+            # cache for next call
+            run.analytics = analytics
+            return analytics
+        except Exception as e:
+            logger.error(f"Failed to load analytics for {run_id}: {e}")
+            return None
+
     async def _save_results_to_disk(
         self,
         run_id: str,

@@ -101,6 +101,54 @@ async def get_simulation_results(
             headers={"Content-Disposition": f"attachment; filename=simulation_{run_id}.parquet"}
         )
 
+@router.get("/analytics/{run_id}")
+async def get_analytics(
+    run_id: str,
+    sim_manager: SimulationManager = Depends(get_simulation_manager)
+):
+    """
+    Return pre-computed risk report and trend analysis for a completed run.
+ 
+    Consumed by the frontend's MC / risk panels.
+    Returns 404 if analytics haven't been computed yet (run not complete).
+    """
+    analytics = await sim_manager.get_analytics(run_id)
+    if not analytics:
+        status = await sim_manager.get_status(run_id)
+        if not status:
+            raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+        if status["status"] != "completed":
+            return json_response({
+                "run_id":  run_id,
+                "status":  status["status"],
+                "message": "Analytics not yet available — simulation still running"
+            })
+        raise HTTPException(status_code=404, detail="Analytics file missing for this run")
+ 
+    return json_response(analytics)
+ 
+ 
+@router.get("/risk-trace/{run_id}")
+async def get_risk_trace(
+    run_id: str,
+    sim_manager: SimulationManager = Depends(get_simulation_manager)
+):
+    """
+    Return just the per-timestep composite risk score [0,1] for charting.
+    Lighter than fetching the full analytics blob.
+    """
+    analytics = await sim_manager.get_analytics(run_id)
+    if not analytics:
+        raise HTTPException(status_code=404, detail=f"Analytics not found for run {run_id}")
+ 
+    state_results = await sim_manager.get_results(run_id)
+    time_axis     = state_results["state"]["time"] if state_results else []
+ 
+    return json_response({
+        "run_id":     run_id,
+        "time":       time_axis,
+        "risk_trace": analytics.get("risk_trace", []),
+    })
 
 @router.get("/results/{run_id}/trajectory/{variable}")
 async def get_variable_trajectory(

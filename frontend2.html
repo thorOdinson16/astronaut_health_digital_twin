@@ -92,7 +92,7 @@ input[type=range]{width:100%;height:2px;accent-color:var(--cyan);cursor:pointer}
 .ffill{height:100%;border-radius:1px;transition:width .5s,background .5s}
 
 /* MC SECTION */
-#mc-section{display:none;background:var(--panel);border:1px solid var(--border);border-radius:3px;padding:11px}
+#mc-section{display:block;background:var(--panel);border:1px solid var(--border);border-radius:3px;padding:11px}
 #mc-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
 .mc-cwrap{position:relative;height:150px}
 #mc-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:10px}
@@ -255,6 +255,9 @@ input[type=range]{width:100%;height:2px;accent-color:var(--cyan);cursor:pointer}
     <div><div class="ctitle">SLEEP QUALITY TRAJECTORY</div><div class="mc-cwrap"><canvas id="ch-mc-h"></canvas></div></div>
   </div>
   <div id="mc-stats"></div>
+  <div id="mc-conclusions" style="margin-top:10px;padding:10px 11px;font-size:9px;color:var(--text);border-top:1px solid var(--border);display:none"></div>
+  <div style="display:flex;justify-content:center;margin:10px 0">
+  <button class="btn primary" id="btn-mc" onclick="runMonteCarlo()" style="width:220px">◈ RUN MONTE CARLO</button>
 </div>
 
 <!-- MISSION REPORT -->
@@ -2162,6 +2165,192 @@ function copyCode() {
     el.style.borderColor = "#00d4ff";
     setTimeout(() => el.style.borderColor = orig, 800);
   });
+}
+
+// ── MC / Analytics JS ─────────────────────────────────────────────────────
+ 
+const API = 'http://localhost:8000';   // adjust if different
+ 
+// Charts created lazily
+let mcFatigueChart = null;
+let mcSleepChart   = null;
+ 
+// ── Fetch and render analytics for a completed run ──────────────────────────
+async function loadAnalytics(runId) {
+  try {
+    const res = await fetch(`${API}/api/data/analytics/${runId}`);
+    if (!res.ok) return;
+    const data = await res.json();
+ 
+    renderRiskWindows(data.risk_report);
+    renderTrends(data.trend_report);
+    renderCumulativeLoad(data.risk_report);
+  } catch (e) {
+    console.warn('Analytics fetch failed:', e);
+  }
+}
+ 
+function renderRiskWindows(riskReport) {
+  if (!riskReport) return;
+  const stats = document.getElementById('mc-stats');
+  const th    = riskReport.threshold_metrics || {};
+  const fat   = th.fatigue   || {};
+  const slp   = th.sleep_quality || {};
+ 
+  const level  = riskReport.overall_risk_level || 'UNKNOWN';
+  const colour = level === 'CRITICAL' ? 'var(--red)' : level === 'HIGH' ? 'var(--amber)' : level === 'MODERATE' ? 'var(--cyan)' : 'var(--green)';
+ 
+  stats.innerHTML = `
+    <div class="mcstat"><div class="mcslabel">RISK LEVEL</div><div class="mcsval" style="color:${colour}">${level}</div></div>
+    <div class="mcstat"><div class="mcslabel">P(FATIGUE RISK)</div><div class="mcsval ${fat.prob_moderate > 0.3 ? 'W' : ''}">${((fat.prob_moderate||0)*100).toFixed(1)}%</div></div>
+    <div class="mcstat"><div class="mcslabel">P(POOR SLEEP)</div><div class="mcsval ${slp.prob_poor > 0.3 ? 'W' : ''}">${((slp.prob_poor||0)*100).toFixed(1)}%</div></div>
+    <div class="mcstat"><div class="mcslabel">AT-RISK WINDOWS</div><div class="mcsval R">${riskReport.n_risk_windows || 0}</div></div>
+  `;
+}
+ 
+function renderTrends(trendReport) {
+  if (!trendReport || !trendReport.trends) return;
+  const trends  = trendReport.trends;
+  const el      = document.getElementById('mc-conclusions');
+  if (!el) return;
+ 
+  const lines = Object.entries(trends)
+    .filter(([, t]) => t.significant)
+    .map(([var_, t]) =>
+      `<b>${var_.replace('_',' ')}</b>: ${t.direction} (${(t.slope_per_day > 0 ? '+' : '')}${t.slope_per_day.toFixed(3)}/day, R²=${t.r_squared.toFixed(2)})`
+    );
+ 
+  if (lines.length === 0) {
+    el.style.display = 'none';
+    return;
+  }
+  el.style.display = 'block';
+  el.innerHTML = '<b style="color:var(--cyan);letter-spacing:2px">TREND ANALYSIS</b><br>' + lines.join('<br>');
+}
+ 
+function renderCumulativeLoad(riskReport) {
+  if (!riskReport || !riskReport.cumulative_load) return;
+  const cl  = riskReport.cumulative_load;
+  const el  = document.getElementById('mc-conclusions');
+  if (!el) return;
+ 
+  const loadHtml =
+    `<br><b style="color:var(--cyan);letter-spacing:2px">CUMULATIVE LOAD</b><br>` +
+    `Fatigue load: ${cl.cumulative_fatigue_load.toFixed(1)} F·hr &nbsp;|&nbsp; ` +
+    `Sleep debt: ${cl.cumulative_sleep_debt.toFixed(1)} hr &nbsp;|&nbsp; ` +
+    `Avg fatigue/day: ${cl.fatigue_integral_per_day.toFixed(2)}`;
+ 
+  el.style.display = 'block';
+  el.innerHTML += loadHtml;
+}
+ 
+ 
+// ── Run Monte Carlo from the frontend and render envelope charts ─────────────
+async function runMonteCarlo() {
+  const btn = document.getElementById('btn-mc');
+  if (btn) { btn.disabled = true; btn.textContent = '⟳ RUNNING MC...'; }
+ 
+  try {
+    const cfg = {
+      n_runs:                 50,
+      mission_duration_hours: parseInt(document.getElementById('ctrl-cyc')?.value || 30) * 24,
+      time_step_minutes:      30,
+      ms_lambda:              parseFloat(document.getElementById('ctrl-lam')?.value || 7) / 100,
+      risk_fatigue_threshold: 5.0,
+      risk_sleep_threshold:   0.4,
+    };
+ 
+    const res  = await fetch(`${API}/api/simulation/monte-carlo`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(cfg),
+    });
+    if (!res.ok) throw new Error(`MC endpoint returned ${res.status}`);
+    const mc = await res.json();
+ 
+    renderMCCharts(mc);
+    renderMCStats(mc);
+    renderMCConclusions(mc);
+ 
+  } catch (e) {
+    console.error('MC run failed:', e);
+    alert('Monte Carlo failed: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '◈ RUN MONTE CARLO'; }
+  }
+}
+ 
+function renderMCCharts(mc) {
+  const env = mc.envelopes;
+  const t   = env.time_hours;
+ 
+  // Fatigue envelope chart
+  const fatCtx = document.getElementById('ch-mc-t')?.getContext('2d');
+  if (fatCtx) {
+    if (mcFatigueChart) mcFatigueChart.destroy();
+    mcFatigueChart = new Chart(fatCtx, {
+      type: 'line',
+      data: {
+        labels: t.map(h => `${Math.round(h/24)}d`),
+        datasets: [
+          { label: 'Mean fatigue', data: env.fatigue_mean, borderColor: '#ffaa00', borderWidth: 1.5, pointRadius: 0, fill: false },
+          { label: 'Max',          data: env.fatigue_max,  borderColor: 'rgba(255,64,64,0.4)', borderWidth: 1, pointRadius: 0, fill: '+1', backgroundColor: 'rgba(255,64,64,0.08)' },
+          { label: 'Min',          data: env.fatigue_min,  borderColor: 'rgba(255,64,64,0.2)', borderWidth: 1, pointRadius: 0, fill: false },
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { x: { ticks: { color: '#7aa8c8', font: { size: 8 } }, grid: { color: '#152844' } },
+                  y: { ticks: { color: '#7aa8c8', font: { size: 8 } }, grid: { color: '#152844' }, min: 0, max: 10 } }
+      }
+    });
+  }
+ 
+  // Sleep envelope chart
+  const slpCtx = document.getElementById('ch-mc-h')?.getContext('2d');
+  if (slpCtx) {
+    if (mcSleepChart) mcSleepChart.destroy();
+    mcSleepChart = new Chart(slpCtx, {
+      type: 'line',
+      data: {
+        labels: t.map(h => `${Math.round(h/24)}d`),
+        datasets: [
+          { label: 'Mean sleep Q', data: env.sleep_mean, borderColor: '#aa88ff', borderWidth: 1.5, pointRadius: 0, fill: false },
+          { label: '+1σ', data: env.sleep_mean.map((v,i) => Math.min(1, v + env.sleep_std[i])), borderColor: 'rgba(170,136,255,0.2)', borderWidth: 1, pointRadius: 0, fill: '+1', backgroundColor: 'rgba(170,136,255,0.08)' },
+          { label: '−1σ', data: env.sleep_mean.map((v,i) => Math.max(0, v - env.sleep_std[i])), borderColor: 'rgba(170,136,255,0.15)', borderWidth: 1, pointRadius: 0, fill: false },
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { x: { ticks: { color: '#7aa8c8', font: { size: 8 } }, grid: { color: '#152844' } },
+                  y: { ticks: { color: '#7aa8c8', font: { size: 8 } }, grid: { color: '#152844' }, min: 0, max: 1 } }
+      }
+    });
+  }
+}
+ 
+function renderMCStats(mc) {
+  const rs   = mc.risk_summary || {};
+  const el   = document.getElementById('mc-stats');
+  if (!el) return;
+ 
+  el.innerHTML = `
+    <div class="mcstat"><div class="mcslabel">n RUNS</div><div class="mcsval">${mc.n_runs}</div></div>
+    <div class="mcstat"><div class="mcslabel">P(FAT RISK) MEAN</div><div class="mcsval W">${((rs.mean_prob_fatigue_risk||0)*100).toFixed(1)}%</div></div>
+    <div class="mcstat"><div class="mcslabel">P95 PEAK FAT</div><div class="mcsval R">${(rs.p95_peak_fatigue||0).toFixed(2)}</div></div>
+    <div class="mcstat"><div class="mcslabel">MED RECOVERY</div><div class="mcsval">${(rs.median_recovery_hours||0).toFixed(1)}h</div></div>
+  `;
+}
+ 
+function renderMCConclusions(mc) {
+  const el = document.getElementById('mc-conclusions');
+  if (!el || !mc.conclusions) return;
+  el.style.display = 'block';
+  el.innerHTML = mc.conclusions.map(c =>
+    `<p style="margin-bottom:6px;line-height:1.5">${c}</p>`
+  ).join('');
 }
 </script>
 </body>
