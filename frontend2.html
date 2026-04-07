@@ -70,10 +70,33 @@ input[type=range]{width:100%;height:2px;accent-color:var(--cyan);cursor:pointer}
 .eitem.S{color:var(--amber)}.eitem.D{color:var(--purple)}.eitem.C{color:var(--red)}
 
 /* CHARTS */
-#charts-row{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
-.cpanel{background:var(--panel);border:1px solid var(--border);border-radius:3px;padding:8px}
+#charts-row {display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px;}
+.cpanel{position:relative;background:var(--panel);border:1px solid var(--border);border-radius:3px;padding:8px}
 .ctitle{font-size:8px;letter-spacing:2px;color:var(--cyan);margin-bottom:5px;text-align:center}
 .cwrap{position:relative;height:115px}
+.cexpand{position:absolute;top:4px;right:8px;cursor:pointer;color:var(--cyan);font-size:14px;opacity:.5;transition:opacity .2s;z-index:1}
+.cexpand:hover{opacity:1}
+
+/* PER-CHART SCRUBBER */
+.cslider-row{display:none;align-items:center;gap:3px;margin-top:4px;padding-top:4px;border-top:1px solid var(--border)}
+.cslider-row.visible{display:flex}
+.cslider{flex:1;accent-color:var(--cyan);height:3px;cursor:pointer}
+.csbtn{background:rgba(0,212,255,.08);border:1px solid var(--border);color:var(--cyan);font-size:8px;padding:0 4px;border-radius:2px;cursor:pointer;transition:background .2s;line-height:1.4}
+.csbtn:hover{background:rgba(0,212,255,.2)}
+.cstime{font:8px 'Courier New';color:var(--cyan);min-width:30px;text-align:center}
+.cslive{background:#00d4ff22;border:1px solid var(--cyan);color:var(--cyan);font-size:7px;padding:0 4px;border-radius:2px;cursor:pointer;letter-spacing:1px;animation:pulse-live 1.5s infinite;display:none}
+.cslive:hover{background:#00d4ff44}
+.cslive.visible{display:inline-block}
+@keyframes pulse-live{0%,100%{opacity:1}50%{opacity:.5}}
+
+/* FULL CHART MODAL */
+#full-chart-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;display:none;align-items:center;justify-content:center}
+#full-chart-overlay.open{display:flex}
+#full-chart-panel{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:16px;width:80vw;max-width:700px;height:400px;position:relative}
+#full-chart-title{font:10px 'Courier New';color:var(--cyan);letter-spacing:2px;margin-bottom:8px;text-align:center}
+#full-close{position:absolute;top:8px;right:12px;background:none;border:none;color:var(--text);font-size:18px;cursor:pointer}
+#full-close:hover{color:var(--cyan)}
+#ch-full{width:100%;height:calc(100% - 30px)}
 
 /* TIMELINE */
 #tl-section{background:var(--panel);border:1px solid var(--border);border-radius:3px;padding:10px}
@@ -93,7 +116,7 @@ input[type=range]{width:100%;height:2px;accent-color:var(--cyan);cursor:pointer}
 
 /* MC SECTION */
 #mc-section{display:block;background:var(--panel);border:1px solid var(--border);border-radius:3px;padding:11px}
-#mc-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+#mc-grid{display: grid;grid-template-columns: repeat(2, minmax(0, 1fr));gap: 10px;margin-top: 10px;}
 .mc-cwrap{position:relative;height:150px}
 #mc-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:10px}
 .mcstat{background:rgba(0,212,255,.04);border:1px solid var(--border);border-radius:3px;padding:8px;text-align:center}
@@ -235,10 +258,54 @@ input[type=range]{width:100%;height:2px;accent-color:var(--cyan);cursor:pointer}
 
 <!-- CHARTS -->
 <div id="charts-row">
-  <div class="cpanel"><div class="ctitle">FATIGUE INDEX</div><div class="cwrap"><canvas id="ch-fat"></canvas></div></div>
-  <div class="cpanel"><div class="ctitle">HEART RATE · BIOGEARS OUTPUT</div><div class="cwrap"><canvas id="ch-hr"></canvas></div></div>
-  <div class="cpanel"><div class="ctitle">SLEEP QUALITY</div><div class="cwrap"><canvas id="ch-slp"></canvas></div></div>
-  <div class="cpanel"><div class="ctitle">COMPOSITE RISK SCORE</div><div class="cwrap"><canvas id="ch-rsk"></canvas></div></div>
+  <div class="cpanel">
+    <div class="ctitle">FATIGUE INDEX</div>
+    <div class="cexpand" onclick="openFullChart('fat','FATIGUE INDEX')">⤢</div>
+    <div class="cwrap"><canvas id="ch-fat"></canvas></div>
+    <div class="cslider-row" id="scr-fat">
+      <button class="csbtn" onclick="chartPrev('fat')">◀</button>
+      <input type="range" class="cslider" id="sl-fat" min="0" max="100" value="0" oninput="chartScrub('fat',+this.value)">
+      <button class="csbtn" onclick="chartNext('fat')">▶</button>
+      <span class="cstime" id="st-fat">0h</span>
+      <button class="cslive" id="lv-fat" onclick="chartResume('fat')">▶</button>
+    </div>
+  </div>
+  <div class="cpanel">
+    <div class="ctitle">HEART RATE · BIOGEARS OUTPUT</div>
+    <div class="cexpand" onclick="openFullChart('hr','HEART RATE')">⤢</div>
+    <div class="cwrap"><canvas id="ch-hr"></canvas></div>
+    <div class="cslider-row" id="scr-hr">
+      <button class="csbtn" onclick="chartPrev('hr')">◀</button>
+      <input type="range" class="cslider" id="sl-hr" min="0" max="100" value="0" oninput="chartScrub('hr',+this.value)">
+      <button class="csbtn" onclick="chartNext('hr')">▶</button>
+      <span class="cstime" id="st-hr">0h</span>
+      <button class="cslive" id="lv-hr" onclick="chartResume('hr')">▶</button>
+    </div>
+  </div>
+  <div class="cpanel">
+    <div class="ctitle">SLEEP QUALITY</div>
+    <div class="cexpand" onclick="openFullChart('slp','SLEEP QUALITY')">⤢</div>
+    <div class="cwrap"><canvas id="ch-slp"></canvas></div>
+    <div class="cslider-row" id="scr-slp">
+      <button class="csbtn" onclick="chartPrev('slp')">◀</button>
+      <input type="range" class="cslider" id="sl-slp" min="0" max="100" value="0" oninput="chartScrub('slp',+this.value)">
+      <button class="csbtn" onclick="chartNext('slp')">▶</button>
+      <span class="cstime" id="st-slp">0h</span>
+      <button class="cslive" id="lv-slp" onclick="chartResume('slp')">▶</button>
+    </div>
+  </div>
+  <div class="cpanel">
+    <div class="ctitle">COMPOSITE RISK SCORE</div>
+    <div class="cexpand" onclick="openFullChart('rsk','COMPOSITE RISK SCORE')">⤢</div>
+    <div class="cwrap"><canvas id="ch-rsk"></canvas></div>
+    <div class="cslider-row" id="scr-rsk">
+      <button class="csbtn" onclick="chartPrev('rsk')">◀</button>
+      <input type="range" class="cslider" id="sl-rsk" min="0" max="100" value="0" oninput="chartScrub('rsk',+this.value)">
+      <button class="csbtn" onclick="chartNext('rsk')">▶</button>
+      <span class="cstime" id="st-rsk">0h</span>
+      <button class="cslive" id="lv-rsk" onclick="chartResume('rsk')">▶</button>
+    </div>
+  </div>
 </div>
 
 <!-- TIMELINE -->
@@ -283,6 +350,7 @@ input[type=range]{width:100%;height:2px;accent-color:var(--cyan);cursor:pointer}
 </div>
 
 <!-- Three.js r128 + GLTFLoader via CDN -->
+<audio id="bgm" src="./No Time For Caution.mp3" preload="auto"></audio>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
@@ -409,6 +477,16 @@ async function fetchAllResults(runId) {
   simResults = results;
   simSummary = summary;
   simEvents  = events.events || [];
+  
+  // Debug: Log what we got
+  console.log('fetchAllResults:', { 
+    hasResults: !!results, 
+    hasSummary: !!summary, 
+    hasRisk: !!(summary && summary.risk_assessment),
+    riskKeys: summary && summary.risk_assessment ? Object.keys(summary.risk_assessment) : []
+  });
+  
+  computeFullChartData();
 }
 
 async function checkHealth() {
@@ -474,6 +552,13 @@ function tlActivate(idx) {
   document.querySelectorAll('.dayblk').forEach((b,i) => {
     b.className = 'dayblk' + (i===idx ? ' active' : i<idx ? ' done' : '');
   });
+  
+  // Auto-scroll to keep current day visible
+  const track = document.getElementById('tl-track');
+  const active = document.getElementById('tlblk-' + idx);
+  if (active && track) {
+    active.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+  }
 }
 
 // ════════════════════════════════════════════════════════
@@ -481,7 +566,15 @@ function tlActivate(idx) {
 // ════════════════════════════════════════════════════════
 
 function populateStatusPanel() {
-  if (!simSummary) return;
+  if (!simSummary) {
+    console.warn('populateStatusPanel: simSummary is null/undefined');
+    // Try to re-fetch if missing
+    return;
+  }
+  if (!simSummary.metrics || !simSummary.risk_assessment) {
+    console.warn('populateStatusPanel: simSummary missing metrics or risk_assessment', simSummary);
+    return;
+  }
   const m = simSummary.metrics;
   const ra = simSummary.risk_assessment;
 
@@ -523,6 +616,21 @@ let roomContainer;          // room + astronaut + TARS parented group
 let astroLookTarget;        // camera look-at for astronaut view
 let threeOK = false;
 let glbLoaded = false;
+const bgm = document.getElementById('bgm');
+
+function fadeOutBGM(duration = 3000) {
+  if (!bgm || bgm.paused) return;
+  const startVol = bgm.volume;
+  const startTime = performance.now();
+  function tick() {
+    const elapsed = performance.now() - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+    bgm.volume = startVol * (1 - progress);
+    if (progress < 1) requestAnimationFrame(tick);
+    else { bgm.pause(); bgm.currentTime = 0; bgm.volume = 1; }
+  }
+  requestAnimationFrame(tick);
+}
 
 // Camera orbit state
 const camState = {
@@ -1512,6 +1620,179 @@ function pushChart(key, label, value) {
 }
 
 // ════════════════════════════════════════════════════════
+// PER-CHART SCRUBBER & FULL CHART DATA
+// ════════════════════════════════════════════════════════
+
+let fullChartData = null;
+let chartScrubbing = { fat: false, hr: false, slp: false, rsk: false };
+let fullChartInstance = null;
+
+function computeFullChartData() {
+  if (!simResults) return;
+  const state = simResults.state;
+  const total = state.time.length;
+
+  const timeLabels = [], fatArr = [], hrArr = [], slpArr = [], riskArr = [];
+  const stressArr = [], spo2Arr = [], phasesArr = [];
+
+  for (let i = 0; i < total; i++) {
+    const timeH = state.time[i] / 60;
+    timeLabels.push(`${timeH.toFixed(0)}h`);
+
+    const fat = state.fatigue[i];
+    const hr  = Math.round(state.hr[i]);
+    const slp = state.sleep_quality[i];
+
+    const motRaw = Array.isArray(state.motion_severity) ? (state.motion_severity[i] || 0) : 0;
+    const mot01  = Math.min(1, motRaw / 5.0);
+    const fat01  = Math.min(1, fat / 10.0);
+    const dayHour = (state.time[i] / 60.0) % 24;
+    const circ = 0.08 + 0.07 * Math.sin(2 * Math.PI * (dayHour - 4) / 24);
+    const backendStr = Array.isArray(state.stress) && state.stress[i] > 0.01 ? state.stress[i] : null;
+    const derivedStr = Math.min(0.95, 0.12 + circ + fat01 * 0.42 + mot01 * 0.55);
+    const str  = backendStr !== null ? Math.max(backendStr, derivedStr * 0.7) : derivedStr;
+    const spo2 = Math.max(93.0, 98.8 - str * 2.4 - fat01 * 1.2);
+    const rsk  = Math.min(1, (fat/10)*0.5 + (str||0)*0.3 + Math.max(0, (1-slp))*0.2);
+    const phase = getPhaseFromTime(timeH);
+
+    fatArr.push(+fat.toFixed(2));
+    hrArr.push(hr);
+    slpArr.push(+slp.toFixed(3));
+    riskArr.push(+rsk.toFixed(3));
+    stressArr.push(+str.toFixed(3));
+    spo2Arr.push(+spo2.toFixed(1));
+    phasesArr.push(phase);
+  }
+
+  fullChartData = { time: timeLabels, fat: fatArr, hr: hrArr, slp: slpArr, risk: riskArr, stress: stressArr, spo2: spo2Arr, phases: phasesArr };
+
+  // Show all per-chart scrubber rows + set max
+  for (const key of ['fat','hr','slp','rsk']) {
+    const row = document.getElementById('scr-' + key);
+    if (row) {
+      row.classList.add('visible');
+      document.getElementById('sl-' + key).max = total - 1;
+    }
+  }
+}
+
+// Per-chart scrub: called when user drags a chart's slider
+function chartScrub(key, idx) {
+  if (!fullChartData) return;
+  chartScrubbing[key] = true;
+  const total = fullChartData.time.length;
+  idx = Math.max(0, Math.min(idx, total - 1));
+
+  // Map chart key to data key
+  const dataKey = { fat: 'fat', hr: 'hr', slp: 'slp', rsk: 'risk' }[key];
+
+  // Show live button for this chart
+  const liveBtn = document.getElementById('lv-' + key);
+  if (liveBtn) liveBtn.classList.add('visible');
+
+  // Update slider
+  document.getElementById('sl-' + key).value = idx;
+
+  // Update this chart only — 30-point window ending at idx
+  const start = Math.max(0, idx - 29);
+  const ds = charts[key].data;
+  ds.labels = fullChartData.time.slice(start, idx + 1);
+  ds.datasets[0].data = fullChartData[dataKey].slice(start, idx + 1);
+  charts[key].update('none');
+
+  // Update time display
+  document.getElementById('st-' + key).textContent = fullChartData.time[idx];
+}
+
+function chartPrev(key) {
+  if (!fullChartData) return;
+  const idx = +document.getElementById('sl-' + key).value;
+  chartScrub(key, idx - 1);
+}
+
+function chartNext(key) {
+  if (!fullChartData) return;
+  const idx = +document.getElementById('sl-' + key).value;
+  chartScrub(key, idx + 1);
+}
+
+function chartResume(key) {
+  chartScrubbing[key] = false;
+  const liveBtn = document.getElementById('lv-' + key);
+  if (liveBtn) liveBtn.classList.remove('visible');
+}
+
+function openFullChart(key, title) {
+  if (!fullChartData) return;
+  const overlay = document.getElementById('full-chart-overlay');
+  overlay.classList.add('open');
+  document.getElementById('full-chart-title').textContent = title + ' — FULL TIMELINE';
+
+  if (fullChartInstance) { fullChartInstance.destroy(); fullChartInstance = null; }
+
+  const colorMap = { fat: CYAN, hr: AMBER, slp: GREEN, rsk: RED };
+  const yRangeMap = { fat: [0,10], hr: [40,160], slp: [0,1], rsk: [0,1] };
+  const dataKeyMap = { fat: 'fat', hr: 'hr', slp: 'slp', rsk: 'risk' };
+  const color = colorMap[key];
+  const [yMin, yMax] = yRangeMap[key];
+  const dataKey = dataKeyMap[key];
+
+  fullChartInstance = new Chart(document.getElementById('ch-full'), {
+    type: 'line',
+    data: { labels: fullChartData.time, datasets: [{ data: fullChartData[dataKey], borderColor: color, borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: true, backgroundColor: color + '18' }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 400 },
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#7aa8c8', font: { size: 9, family: 'Courier New' }, maxTicksLimit: 15 }, grid: { color: '#152844', lineWidth: 0.5 }, border: { color: '#152844' } },
+        y: { min: yMin, max: yMax, ticks: { color: '#7aa8c8', font: { size: 9, family: 'Courier New' }, maxTicksLimit: 6 }, grid: { color: '#152844', lineWidth: 0.5 }, border: { color: '#152844' } }
+      }
+    }
+  });
+}
+
+function closeFullChart(e) {
+  if (e && e.target !== document.getElementById('full-chart-overlay')) return;
+  document.getElementById('full-chart-overlay').classList.remove('open');
+  if (fullChartInstance) { fullChartInstance.destroy(); fullChartInstance = null; }
+}
+
+function openFullChart(key, title) {
+  if (!fullChartData) return;
+  const overlay = document.getElementById('full-chart-overlay');
+  overlay.classList.add('open');
+  document.getElementById('full-chart-title').textContent = title + ' — FULL TIMELINE';
+
+  if (fullChartInstance) { fullChartInstance.destroy(); fullChartInstance = null; }
+
+  const colorMap = { fat: CYAN, hr: AMBER, slp: GREEN, rsk: RED };
+  const yRangeMap = { fat: [0,10], hr: [40,160], slp: [0,1], rsk: [0,1] };
+  const dataKeyMap = { fat: 'fat', hr: 'hr', slp: 'slp', rsk: 'risk' };
+  const color = colorMap[key];
+  const [yMin, yMax] = yRangeMap[key];
+  const dataKey = dataKeyMap[key];
+
+  fullChartInstance = new Chart(document.getElementById('ch-full'), {
+    type: 'line',
+    data: { labels: fullChartData.time, datasets: [{ data: fullChartData[dataKey], borderColor: color, borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: true, backgroundColor: color + '18' }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 400 },
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#7aa8c8', font: { size: 9, family: 'Courier New' }, maxTicksLimit: 15 }, grid: { color: '#152844', lineWidth: 0.5 }, border: { color: '#152844' } },
+        y: { min: yMin, max: yMax, ticks: { color: '#7aa8c8', font: { size: 9, family: 'Courier New' }, maxTicksLimit: 6 }, grid: { color: '#152844', lineWidth: 0.5 }, border: { color: '#152844' } }
+      }
+    }
+  });
+}
+
+function closeFullChart(e) {
+  if (e && e.target !== document.getElementById('full-chart-overlay')) return;
+  document.getElementById('full-chart-overlay').classList.remove('open');
+  if (fullChartInstance) { fullChartInstance.destroy(); fullChartInstance = null; }
+}
+
+// ════════════════════════════════════════════════════════
 // PLAYBACK ENGINE
 // ════════════════════════════════════════════════════════
 
@@ -1526,13 +1807,21 @@ function startPlay() {
   document.getElementById('btn-play').disabled  = true;
   document.getElementById('btn-pause').disabled = false;
   requestAnimationFrame(playLoop);
+  bgm.currentTime = 0; bgm.volume = 1;
+  try { bgm.play(); } catch(e) { console.warn('BGM play blocked:', e); }
 }
 
 function togglePause() {
   playState.paused = !playState.paused;
   const btn = document.getElementById('btn-pause');
   btn.textContent = playState.paused ? '▶ RESUME' : '⏸ PAUSE';
-  if (!playState.paused) { playState.lastTs = performance.now(); requestAnimationFrame(playLoop); }
+  if (!playState.paused) {
+    playState.lastTs = performance.now();
+    requestAnimationFrame(playLoop);
+    bgm.play();
+  } else {
+    bgm.pause();
+  }
 }
 
 function resetPlay() {
@@ -1549,6 +1838,7 @@ function resetPlay() {
   document.getElementById('risk-badge').className = '';
   setVital('hr','—',''); setVital('fat','—',''); setVital('str','—',''); setVital('spo2','—','');
   _simState = null;
+  bgm.pause(); bgm.currentTime = 0; bgm.volume = 1;
   if (simResults) buildTimeline();
 }
 
@@ -1634,12 +1924,24 @@ function playLoop(ts) {
   else if (rsk >= .4) { rb.textContent='ELEVATED'; rb.className='Y'; }
   else                { rb.textContent='NOMINAL';  rb.className=''; }
 
+  // Update per-chart with varied hourly data (like slider does)
   if (idx % 4 === 0) {
-    const lbl = `${timeH.toFixed(0)}h`;
-    pushChart('fat', lbl, fat);
-    pushChart('hr',  lbl, hr);
-    pushChart('slp', lbl, slp);
-    pushChart('rsk', lbl, rsk);
+    for (const key of ['fat','hr','slp','rsk']) {
+      if (!chartScrubbing[key]) {
+        // Use actual hourly labels and data from fullChartData
+        const dataKey = { fat: 'fat', hr: 'hr', slp: 'slp', rsk: 'risk' }[key];
+        const ds = charts[key].data;
+        
+        // Show window of 30 points with ACTUAL hourly labels and data
+        const start = Math.max(0, idx - 29);
+        ds.labels = fullChartData ? fullChartData.time.slice(start, idx + 1) : [];
+        ds.datasets[0].data = fullChartData ? fullChartData[dataKey].slice(start, idx + 1) : [];
+        
+        charts[key].update('none');
+        document.getElementById('sl-' + key).value = idx;
+        document.getElementById('st-' + key).textContent = fullChartData ? fullChartData.time[idx] : `${timeH.toFixed(0)}h`;
+      }
+    }
   }
 
   tlActivate(Math.floor(timeH / 24));
@@ -1663,6 +1965,12 @@ function setVital(id, val, cls) {
 
 function endMission() {
   playState.running = false;
+  chartScrubbing = { fat: false, hr: false, slp: false, rsk: false };
+  for (const key of ['fat','hr','slp','rsk']) {
+    const lb = document.getElementById('lv-' + key);
+    if (lb) lb.classList.remove('visible');
+  }
+  fadeOutBGM(3000);
   document.getElementById('phase-disp').textContent = '◈ MISSION COMPLETE — GENERATING REPORT';
   document.getElementById('risk-badge').className = '';
   document.getElementById('risk-badge').textContent = 'COMPLETE';
@@ -2353,5 +2661,14 @@ function renderMCConclusions(mc) {
   ).join('');
 }
 </script>
+<!-- FULL CHART MODAL -->
+<div id="full-chart-overlay" onclick="closeFullChart(event)">
+  <div id="full-chart-panel">
+    <div id="full-chart-title">FULL TIMELINE</div>
+    <button id="full-close" onclick="closeFullChart()">✕</button>
+    <canvas id="ch-full"></canvas>
+  </div>
+</div>
+
 </body>
 </html>
