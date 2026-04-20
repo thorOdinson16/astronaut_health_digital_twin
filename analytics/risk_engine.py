@@ -228,10 +228,10 @@ def compute_cumulative_load(
     sleep_debt = np.maximum(0.0, 0.8 - slp)  # deficit vs 0.8 baseline
 
     return {
-        "cumulative_fatigue_load":   float(np.trapz(fat,        dx=dt)),
-        "cumulative_sleep_debt":     float(np.trapz(sleep_debt, dx=dt)),
-        "cumulative_stress_exposure":float(np.trapz(sts,        dx=dt)),
-        "fatigue_integral_per_day":  float(np.trapz(fat, dx=dt) / max(1, len(fat) * dt / 24)),
+        "cumulative_fatigue_load":   float(np.trapezoid(fat,        dx=dt)),
+        "cumulative_sleep_debt":     float(np.trapezoid(sleep_debt, dx=dt)),
+        "cumulative_stress_exposure":float(np.trapezoid(sts,        dx=dt)),
+        "fatigue_integral_per_day":  float(np.trapezoid(fat, dx=dt) / max(1, len(fat) * dt / 24)),
     }
 
 

@@ -16,7 +16,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:11
 
 /* HEADER */
 #hdr{display:flex;align-items:center;justify-content:space-between;background:var(--panel);border:1px solid var(--border);padding:8px 16px;border-radius:3px}
-.hdr-title{font-size:15px;color:var(--cyan);letter-spacing:4px;font-weight:bold}
+.hdr-title{font-size:18px;color:var(--cyan);letter-spacing:4px;font-weight:bold}
 .hdr-sub{font-size:8px;color:var(--text);letter-spacing:2px;margin-top:2px}
 #clock{font-size:22px;color:var(--cyan);letter-spacing:4px;font-variant-numeric:tabular-nums}
 #risk-badge{padding:5px 14px;border-radius:2px;font-size:12px;letter-spacing:3px;font-weight:bold;background:#001a08;color:var(--green);border:1px solid var(--green);transition:all .4s}
@@ -27,7 +27,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:11
 /* MAIN GRID */
 #main-grid{display:grid;grid-template-columns:210px 1fr 190px;gap:8px}
 .panel{background:var(--panel);border:1px solid var(--border);border-radius:3px;padding:11px}
-.ptitle{font-size:9px;letter-spacing:3px;color:var(--cyan);border-bottom:1px solid var(--border);padding-bottom:7px;margin-bottom:10px}
+.ptitle{font-size:12px;letter-spacing:3px;color:var(--cyan);border-bottom:1px solid var(--border);padding-bottom:7px;margin-bottom:10px}
 
 /* Controls */
 .crow{margin-bottom:9px}
@@ -115,7 +115,6 @@ input[type=range]{width:100%;height:2px;accent-color:var(--cyan);cursor:pointer}
 .ffill{height:100%;border-radius:1px;transition:width .5s,background .5s}
 
 /* MC SECTION */
-#mc-section{display:block;background:var(--panel);border:1px solid var(--border);border-radius:3px;padding:11px}
 #mc-grid{display: grid;grid-template-columns: repeat(2, minmax(0, 1fr));gap: 10px;margin-top: 10px;}
 .mc-cwrap{position:relative;height:150px}
 #mc-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:10px}
@@ -125,7 +124,6 @@ input[type=range]{width:100%;height:2px;accent-color:var(--cyan);cursor:pointer}
 .mcsval.W{color:var(--amber)}.mcsval.R{color:var(--red)}
 
 /* REPORT */
-#report-section{display:none;background:var(--panel);border:1px solid var(--border);border-radius:3px;padding:11px}
 #rtable{width:100%;border-collapse:collapse;margin-top:8px;font-size:11px}
 #rtable td{padding:6px 10px;border-bottom:1px solid var(--border)}
 #rtable td:last-child{text-align:right;color:var(--cyan)}
@@ -172,6 +170,25 @@ input[type=range]{width:100%;height:2px;accent-color:var(--cyan);cursor:pointer}
 #dbtn{position:fixed;top:60px;right:285px;background:rgba(4,12,24,.85);border:1px solid #334466;color:#7aa8c8;font-family:"Courier New",monospace;font-size:9px;padding:5px 9px;cursor:pointer;border-radius:3px;z-index:9999;letter-spacing:1px}
 #dbtn:hover{border-color:#00d4ff;color:#00d4ff}
 #dbtn.active{border-color:#ffaa00;color:#ffaa00}
+
+/* PROGRESS BARS */
+#mc-progress-wrap{font-family:var(--mono)}
+@keyframes prog-scan{0%{opacity:.7}50%{opacity:1}100%{opacity:.7}}
+#mc-prog-bar{animation:prog-scan 1.6s ease-in-out infinite}
+
+/* SIM INFO TOOLTIP */
+#sim-tooltip{pointer-events:auto}
+#sim-info-icon:hover{opacity:1!important}
+.sim-run-entry{padding:5px 0;border-bottom:1px solid rgba(21,40,68,.5)}
+.sim-run-entry:last-child{border-bottom:none;padding-bottom:0}
+.sim-run-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:3px}
+.sim-run-id-label{color:var(--cyan);letter-spacing:1px;font-size:8px}
+.sim-run-phase-label{font-size:8px}
+.sim-prog-track{background:var(--border);border-radius:2px;height:3px;overflow:hidden;margin-bottom:3px}
+.sim-prog-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--cyan),var(--purple));transition:width .5s ease}
+.sim-prog-fill.done{background:var(--green)}
+.sim-prog-fill.err{background:var(--red)}
+.sim-run-sub{display:flex;justify-content:space-between;color:rgba(120,168,200,.45);font-size:7px}
 </style>
 </head>
 <body>
@@ -205,21 +222,61 @@ input[type=range]{width:100%;height:2px;accent-color:var(--cyan);cursor:pointer}
     <div class="crow"><div class="clabel">SMS RATE (λ/day) <span id="lbl-lam">0.72</span></div><input type="range" id="ctrl-lam" min="1" max="20" value="7" step="1"></div>
     <div class="crow"><div class="clabel">RECOVERY FACTOR <span id="lbl-rec">1.0×</span></div><input type="range" id="ctrl-rec" min="5" max="20" value="10" step="1"></div>
     <div class="crow"><div class="clabel">FATIGUE SENSITIVITY <span id="lbl-fsens">1.0×</span></div><input type="range" id="ctrl-fsens" min="5" max="20" value="10" step="1"></div>
-    <div class="crow"><div class="clabel">PLAYBACK SPEED <span id="lbl-spd">1.0×</span></div><input type="range" id="ctrl-spd" min="1" max="8" value="3"></div>
 
-    <button class="btn primary" id="btn-run" onclick="startSimulation()">◈ RUN SIMULATION</button>
-    <button class="btn" id="btn-load" onclick="openLoadModal()" style="border-color:var(--purple);color:var(--purple)">⇩ LOAD EXISTING</button>
-    <button class="btn" id="btn-play" onclick="startPlay()" disabled>▶ PLAY RESULTS</button>
-    <button class="btn" id="btn-pause" onclick="togglePause()" disabled>⏸ PAUSE</button>
-    <button class="btn" id="btn-reset" onclick="resetPlay()" disabled>⏮ RESET</button>
-
-    <div style="margin-top:12px;padding-top:9px;border-top:1px solid var(--border)">
-      <div class="ptitle" style="margin:0 0 8px">BIOGEARS ENGINE</div>
-      <div class="srow"><span>MODE</span><span class="sval" id="bg-mode">—</span></div>
-      <div class="srow"><span>STATUS</span><span class="sval G" id="bg-status">CONNECTING</span></div>
-      <div class="srow"><span>SIGNALS</span><span class="sval">HR·MAP·SpO₂</span></div>
-      <div class="srow"><span>RUN ID</span><span class="sval" id="bg-cyc" style="font-size:8px;word-break:break-all">—</span></div>
+    <div id="run-btn-wrap" style="position:relative">
+      <button type="button" class="btn primary" id="btn-run" onclick="startSimulation()" style="width:100%">◈ RUN SIMULATION</button>
+      <!-- ℹ overlay — sits on top of button's right edge, only visible when sims are active -->
+      <div id="sim-info-icon"
+           style="display:none;position:absolute;right:0;top:0;bottom:0;width:26px;
+                  align-items:center;justify-content:center;
+                  font-size:12px;cursor:default;z-index:10;
+                  color:var(--amber);font-family:sans-serif"
+           onmouseenter="showSimTooltip()" onmouseleave="scheduleHideSimTooltip()"
+           onclick="event.stopPropagation()">ℹ</div>
+      <!-- SIM PROGRESS TOOLTIP -->
+      <div id="sim-tooltip"
+           onmouseenter="cancelHideSimTooltip()" onmouseleave="scheduleHideSimTooltip()"
+           style="display:none;position:absolute;top:calc(100% + 5px);left:0;right:0;z-index:600;
+                  background:#050f1e;border:1px solid var(--border2);border-radius:4px;
+                  padding:10px 11px;font-family:var(--mono);font-size:9px;
+                  box-shadow:0 10px 30px rgba(0,0,0,.7)">
+        <div style="color:var(--cyan);letter-spacing:2px;font-size:8px;border-bottom:1px solid var(--border);padding-bottom:5px;margin-bottom:8px">◈ ACTIVE SIMULATIONS</div>
+        <div id="sim-tooltip-list"></div>
+      </div>
     </div>
+    <button type="button" class="btn" id="btn-load" onclick="openLoadModal()" style="border-color:var(--purple);color:var(--purple)">⇩ LOAD EXISTING</button>
+    <button type="button" class="btn" id="btn-play" onclick="startPlay()" disabled>▶ PLAY RESULTS</button>
+
+    <div class="crow" style="margin-top:6px">
+      <div class="clabel">PLAYBACK SPEED <span id="lbl-spd">1.0×</span></div>
+      <input type="range" id="ctrl-spd" min="1" max="8" value="3" oninput="document.getElementById('lbl-spd').textContent=`${(+this.value/3).toFixed(1)}×`">
+    </div>
+    <div style="display:flex;gap:5px;margin-top:2px">
+      <button type="button" class="btn" id="btn-pause" onclick="togglePause()" disabled style="flex:1;margin:0">⏸ PAUSE</button>
+      <button type="button" class="btn" id="btn-reset" onclick="resetPlay()" disabled style="flex:1;margin:0">⏮ RESET</button>
+    </div>
+
+    <div style="border-top:1px solid var(--border2);margin:10px 0 8px"></div>
+    
+    <div class="ptitle">SIMULATION CONTROL</div>
+    <div class="crow">
+      <div class="clabel">MC SIMULATIONS <span id="lbl-mc-runs">50</span></div>
+      <input type="range" id="ctrl-mc-runs" min="10" max="500" value="50" step="10" oninput="document.getElementById('lbl-mc-runs').textContent=this.value">
+    </div>
+    <div class="crow">
+      <div class="clabel">BASELINE SLEEP Q. <span id="lbl-mc-slp">0.80</span></div>
+      <input type="range" id="ctrl-mc-slp" min="40" max="100" value="80" step="5" oninput="document.getElementById('lbl-mc-slp').textContent=(this.value/100).toFixed(2)">
+    </div>
+    <div class="crow">
+      <div class="clabel">FATIGUE RISK THRESH. <span id="lbl-mc-fat-thr">5.0</span></div>
+      <input type="range" id="ctrl-mc-fat-thr" min="10" max="90" value="50" step="5" oninput="document.getElementById('lbl-mc-fat-thr').textContent=(this.value/10).toFixed(1)">
+    </div>
+    <div class="crow">
+      <div class="clabel">SLEEP RISK THRESH. <span id="lbl-mc-slp-thr">0.40</span></div>
+      <input type="range" id="ctrl-mc-slp-thr" min="10" max="80" value="40" step="5" oninput="document.getElementById('lbl-mc-slp-thr').textContent=(this.value/100).toFixed(2)">
+    </div>
+    <button type="button" class="btn primary" id="btn-mc" onclick="runMonteCarlo()">◈ RUN MONTE CARLO</button>
+
   </div>
 
   <!-- 3D TWIN -->
@@ -228,8 +285,8 @@ input[type=range]{width:100%;height:2px;accent-color:var(--cyan);cursor:pointer}
     <canvas id="three-canvas"></canvas>
     <div id="zoom-hint">SCROLL TO ZOOM · DRAG TO ORBIT · DBL-CLICK RESET</div>
     <div style="display:flex;gap:6px;width:100%">
-      <button class="btn" id="btn-cam-ship" onclick="setCamMode('ship')" style="border-color:var(--cyan);color:var(--cyan)">◈ ENDURANCE VIEW</button>
-      <button class="btn" id="btn-cam-astro" onclick="setCamMode('astro')">◈ ASTRONAUT VIEW</button>
+      <button type="button" class="btn" id="btn-cam-ship" onclick="setCamMode('ship')" style="border-color:var(--cyan);color:var(--cyan)">◈ ENDURANCE VIEW</button>
+      <button type="button" class="btn" id="btn-cam-astro" onclick="setCamMode('astro')">◈ ASTRONAUT VIEW</button>
     </div>
     <div id="phase-disp">◈ AWAITING MISSION INITIALIZATION</div>
     <div id="vitals">
@@ -241,7 +298,7 @@ input[type=range]{width:100%;height:2px;accent-color:var(--cyan);cursor:pointer}
   </div>
 
   <!-- STATUS -->
-  <div class="panel">
+  <div class="panel" style="height: 100%;position: relative; display: flex; flex-direction: column;">
     <div class="ptitle">MISSION STATUS</div>
     <div id="cyc-disp" style="font-size:14px;color:var(--cyan);letter-spacing:2px;margin-bottom:5px">STEP: — / —</div>
     <div id="phase-name" style="font-size:8px;letter-spacing:3px;color:var(--amber);margin-bottom:10px">STANDBY</div>
@@ -251,86 +308,119 @@ input[type=range]{width:100%;height:2px;accent-color:var(--cyan);cursor:pointer}
     <div class="srow"><span>AVG SLEEP Q.</span><span class="sval" id="st-sq">—</span></div>
     <div class="srow"><span>MEAN HR</span><span class="sval" id="st-hr">—</span></div>
     <div class="ptitle" style="margin-top:10px">EVENT LOG</div>
-    <div id="elog" class="elog"><div class="eitem" style="color:rgba(120,168,200,.3)">No events recorded</div></div>
-  </div>
-
-</div><!-- end main-grid -->
-
-<!-- CHARTS -->
-<div id="charts-row">
-  <div class="cpanel">
-    <div class="ctitle">FATIGUE INDEX</div>
-    <div class="cexpand" onclick="openFullChart('fat','FATIGUE INDEX')">⤢</div>
-    <div class="cwrap"><canvas id="ch-fat"></canvas></div>
-    <div class="cslider-row" id="scr-fat">
-      <button class="csbtn" onclick="chartPrev('fat')">◀</button>
-      <input type="range" class="cslider" id="sl-fat" min="0" max="100" value="0" oninput="chartScrub('fat',+this.value)">
-      <button class="csbtn" onclick="chartNext('fat')">▶</button>
-      <span class="cstime" id="st-fat">0h</span>
-      <button class="cslive" id="lv-fat" onclick="chartResume('fat')">▶</button>
-    </div>
-  </div>
-  <div class="cpanel">
-    <div class="ctitle">HEART RATE · BIOGEARS OUTPUT</div>
-    <div class="cexpand" onclick="openFullChart('hr','HEART RATE')">⤢</div>
-    <div class="cwrap"><canvas id="ch-hr"></canvas></div>
-    <div class="cslider-row" id="scr-hr">
-      <button class="csbtn" onclick="chartPrev('hr')">◀</button>
-      <input type="range" class="cslider" id="sl-hr" min="0" max="100" value="0" oninput="chartScrub('hr',+this.value)">
-      <button class="csbtn" onclick="chartNext('hr')">▶</button>
-      <span class="cstime" id="st-hr">0h</span>
-      <button class="cslive" id="lv-hr" onclick="chartResume('hr')">▶</button>
-    </div>
-  </div>
-  <div class="cpanel">
-    <div class="ctitle">SLEEP QUALITY</div>
-    <div class="cexpand" onclick="openFullChart('slp','SLEEP QUALITY')">⤢</div>
-    <div class="cwrap"><canvas id="ch-slp"></canvas></div>
-    <div class="cslider-row" id="scr-slp">
-      <button class="csbtn" onclick="chartPrev('slp')">◀</button>
-      <input type="range" class="cslider" id="sl-slp" min="0" max="100" value="0" oninput="chartScrub('slp',+this.value)">
-      <button class="csbtn" onclick="chartNext('slp')">▶</button>
-      <span class="cstime" id="st-slp">0h</span>
-      <button class="cslive" id="lv-slp" onclick="chartResume('slp')">▶</button>
-    </div>
-  </div>
-  <div class="cpanel">
-    <div class="ctitle">COMPOSITE RISK SCORE</div>
-    <div class="cexpand" onclick="openFullChart('rsk','COMPOSITE RISK SCORE')">⤢</div>
-    <div class="cwrap"><canvas id="ch-rsk"></canvas></div>
-    <div class="cslider-row" id="scr-rsk">
-      <button class="csbtn" onclick="chartPrev('rsk')">◀</button>
-      <input type="range" class="cslider" id="sl-rsk" min="0" max="100" value="0" oninput="chartScrub('rsk',+this.value)">
-      <button class="csbtn" onclick="chartNext('rsk')">▶</button>
-      <span class="cstime" id="st-rsk">0h</span>
-      <button class="cslive" id="lv-rsk" onclick="chartResume('rsk')">▶</button>
+    <div id="elog" class="elog" style="flex:1; overflow-y: auto;min-height: 0;"><div class="eitem" style="color:rgba(120,168,200,.3)">No events recorded</div></div>
+    <div style="margin-top:auto;padding-top:9px;border-top:1px solid var(--border);width:100%;">
+      <div class="ptitle" style="margin:0 0 8px">BIOGEARS ENGINE</div>
+      <div class="srow"><span>MODE</span><span class="sval" id="bg-mode">—</span></div>
+      <div class="srow"><span>STATUS</span><span class="sval G" id="bg-status">CONNECTING</span></div>
+      <div class="srow"><span>SIGNALS</span><span class="sval">HR·MAP·SpO₂</span></div>
+      <div class="srow"><span>RUN ID</span><span class="sval" id="bg-cyc" style="font-size:8px;word-break:break-all">—</span></div>
     </div>
   </div>
 </div>
+<!-- end main-grid -->
 
-<!-- TIMELINE -->
-<div id="tl-section" class="panel">
+<!-- TIMELINE + CHARTS (merged, hidden until sim loaded) -->
+<div id="tl-section" class="panel" style="display:none">
   <div class="ptitle">MISSION TIMELINE · <span id="tl-meta" style="color:var(--text);font-size:8px">awaiting simulation</span></div>
   <div id="tl-track"></div>
-</div>
-
-<!-- MONTE CARLO -->
-<div id="mc-section">
-  <div class="ptitle" style="padding:11px 11px 0">◈ SIMULATION RISK ANALYTICS</div>
-  <div id="mc-grid">
-    <div><div class="ctitle">FATIGUE TRAJECTORY</div><div class="mc-cwrap"><canvas id="ch-mc-t"></canvas></div></div>
-    <div><div class="ctitle">SLEEP QUALITY TRAJECTORY</div><div class="mc-cwrap"><canvas id="ch-mc-h"></canvas></div></div>
+  <div id="charts-row" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+    <div class="cpanel" style="background:transparent;border:none;padding:0">
+      <div class="ctitle">FATIGUE INDEX</div>
+      <div class="cexpand" onclick="openFullChart('fat','FATIGUE INDEX')">⤢</div>
+      <div class="cwrap"><canvas id="ch-fat"></canvas></div>
+      <div class="cslider-row" id="scr-fat">
+        <button class="csbtn" onclick="chartPrev('fat')">◀</button>
+        <input type="range" class="cslider" id="sl-fat" min="0" max="100" value="0" oninput="chartScrub('fat',+this.value)">
+        <button class="csbtn" onclick="chartNext('fat')">▶</button>
+        <span class="cstime" id="st-fat">0h</span>
+        <button class="cslive" id="lv-fat" onclick="chartResume('fat')">▶</button>
+      </div>
+    </div>
+    <div class="cpanel" style="background:transparent;border:none;padding:0">
+      <div class="ctitle">HEART RATE · BIOGEARS OUTPUT</div>
+      <div class="cexpand" onclick="openFullChart('hr','HEART RATE')">⤢</div>
+      <div class="cwrap"><canvas id="ch-hr"></canvas></div>
+      <div class="cslider-row" id="scr-hr">
+        <button class="csbtn" onclick="chartPrev('hr')">◀</button>
+        <input type="range" class="cslider" id="sl-hr" min="0" max="100" value="0" oninput="chartScrub('hr',+this.value)">
+        <button class="csbtn" onclick="chartNext('hr')">▶</button>
+        <span class="cstime" id="st-hr">0h</span>
+        <button class="cslive" id="lv-hr" onclick="chartResume('hr')">▶</button>
+      </div>
+    </div>
+    <div class="cpanel" style="background:transparent;border:none;padding:0">
+      <div class="ctitle">SLEEP QUALITY</div>
+      <div class="cexpand" onclick="openFullChart('slp','SLEEP QUALITY')">⤢</div>
+      <div class="cwrap"><canvas id="ch-slp"></canvas></div>
+      <div class="cslider-row" id="scr-slp">
+        <button class="csbtn" onclick="chartPrev('slp')">◀</button>
+        <input type="range" class="cslider" id="sl-slp" min="0" max="100" value="0" oninput="chartScrub('slp',+this.value)">
+        <button class="csbtn" onclick="chartNext('slp')">▶</button>
+        <span class="cstime" id="st-slp">0h</span>
+        <button class="cslive" id="lv-slp" onclick="chartResume('slp')">▶</button>
+      </div>
+    </div>
+    <div class="cpanel" style="background:transparent;border:none;padding:0">
+      <div class="ctitle">COMPOSITE RISK SCORE</div>
+      <div class="cexpand" onclick="openFullChart('rsk','COMPOSITE RISK SCORE')">⤢</div>
+      <div class="cwrap"><canvas id="ch-rsk"></canvas></div>
+      <div class="cslider-row" id="scr-rsk">
+        <button class="csbtn" onclick="chartPrev('rsk')">◀</button>
+        <input type="range" class="cslider" id="sl-rsk" min="0" max="100" value="0" oninput="chartScrub('rsk',+this.value)">
+        <button class="csbtn" onclick="chartNext('rsk')">▶</button>
+        <span class="cstime" id="st-rsk">0h</span>
+        <button class="cslive" id="lv-rsk" onclick="chartResume('rsk')">▶</button>
+      </div>
+    </div>
   </div>
-  <div id="mc-stats"></div>
-  <div id="mc-conclusions" style="margin-top:10px;padding:10px 11px;font-size:9px;color:var(--text);border-top:1px solid var(--border);display:none"></div>
-  <div style="display:flex;justify-content:center;margin:10px 0">
-  <button class="btn primary" id="btn-mc" onclick="runMonteCarlo()" style="width:220px">◈ RUN MONTE CARLO</button>
 </div>
 
-<!-- MISSION REPORT -->
-<div id="report-section">
-  <div class="ptitle" style="padding:11px 11px 0">◈ POST-MISSION HEALTH REPORT</div>
-  <table id="rtable"></table>
+<!-- MISSION RISK ANALYTICS — hidden until playback ends -->
+<div id="mission-risk-section" style="display:none;background:var(--panel);border:1px solid var(--border);border-radius:3px;padding:11px">
+  <div class="ptitle" style="margin-bottom:10px">◈ MISSION RISK ANALYTICS</div>
+  <div id="mission-risk-stats" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px"></div>
+  <table id="rtable" style="width:100%;border-collapse:collapse;font-size:11px"></table>
+  <div id="mission-risk-conclusions" style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);font-size:9px;color:var(--text);display:none"></div>
+</div>
+
+<!-- BIOGEARS SIM PROGRESS — shown while simulation is running -->
+
+<!-- SIMULATION RISK ANALYTICS (Monte Carlo) — hidden until MC runs -->
+<div id="mc-section" style="display:none;background:var(--panel);border:1px solid var(--border);border-radius:3px;padding:11px">
+  <div class="ptitle" style="margin-bottom:10px">◈ SIMULATION RISK ANALYTICS</div>
+
+  <!-- MC PROGRESS (shown while running, hidden after results arrive) -->
+  <div id="mc-progress-wrap" style="display:none;padding:16px 0">
+    <div style="font-size:9px;color:var(--text);letter-spacing:2px;margin-bottom:10px" id="mc-prog-label">INITIALIZING MONTE CARLO ENGINE...</div>
+    <div style="background:var(--border);border-radius:3px;height:6px;overflow:hidden;margin-bottom:8px">
+      <div id="mc-prog-bar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--cyan),var(--green));border-radius:3px;transition:width .3s ease"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:8px;color:var(--text);margin-bottom:14px">
+      <span id="mc-prog-pct">0%</span>
+      <span id="mc-prog-runs">0 / — trajectories</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px">
+      <div style="background:rgba(0,212,255,.04);border:1px solid var(--border);border-radius:3px;padding:7px;text-align:center;font-size:8px;letter-spacing:1px" id="mcs-traj">
+        <div style="color:var(--text)">TRAJECTORIES</div><div id="mcs-traj-val" style="color:var(--cyan);font-size:16px;margin-top:3px">—</div>
+      </div>
+      <div style="background:rgba(0,212,255,.04);border:1px solid var(--border);border-radius:3px;padding:7px;text-align:center;font-size:8px;letter-spacing:1px" id="mcs-elapsed">
+        <div style="color:var(--text)">ELAPSED</div><div id="mcs-elapsed-val" style="color:var(--amber);font-size:16px;margin-top:3px">0s</div>
+      </div>
+      <div style="background:rgba(0,212,255,.04);border:1px solid var(--border);border-radius:3px;padding:7px;text-align:center;font-size:8px;letter-spacing:1px" id="mcs-eta">
+        <div style="color:var(--text)">ETA</div><div id="mcs-eta-val" style="color:var(--green);font-size:16px;margin-top:3px">—</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="mc-results-wrap">
+    <div id="mc-grid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
+      <div><div class="ctitle">FATIGUE ENVELOPE</div><div class="mc-cwrap"><canvas id="ch-mc-t"></canvas></div></div>
+      <div><div class="ctitle">SLEEP QUALITY ENVELOPE</div><div class="mc-cwrap"><canvas id="ch-mc-h"></canvas></div></div>
+    </div>
+    <div id="mc-stats" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:10px"></div>
+    <div id="mc-conclusions" style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);font-size:9px;color:var(--text);display:none"></div>
+  </div>
 </div>
 
 </div><!-- end app -->
@@ -342,9 +432,9 @@ input[type=range]{width:100%;height:2px;accent-color:var(--cyan);cursor:pointer}
     <div id="load-refresh-spinner"></div>
     <div id="load-list"><div id="load-empty">FETCHING RUNS...</div></div>
     <div id="load-modal-btns">
-      <button class="btn" onclick="refreshRunList()">↺ REFRESH</button>
-      <button class="btn" id="btn-load-confirm" onclick="confirmLoad()" disabled style="border-color:var(--cyan);color:var(--cyan)">◈ LOAD SELECTED</button>
-      <button class="btn" onclick="closeLoadModal()">✕ CANCEL</button>
+      <button type="button" class="btn" onclick="refreshRunList()">↺ REFRESH</button>
+      <button type="button" class="btn" id="btn-load-confirm" onclick="confirmLoad()" disabled style="border-color:var(--cyan);color:var(--cyan)">◈ LOAD SELECTED</button>
+      <button type="button" class="btn" onclick="closeLoadModal()">✕ CANCEL</button>
     </div>
   </div>
 </div>
@@ -411,10 +501,214 @@ let simResults = null;
 let simSummary = null;
 let simEvents  = null;
 
+// ── Section visibility helpers ───────────────────────────────────────────────
+
+// Called when a sim is loaded/ready — show timeline+charts, hide analytics
+function onSimReady() {
+  document.getElementById('tl-section').style.display = 'block';
+  document.getElementById('mission-risk-section').style.display = 'none';
+  document.getElementById('mc-section').style.display = 'none';
+  // Reset charts so old data doesn't linger
+  initCharts();
+  // Clear stats/table from a previous run
+  document.getElementById('mission-risk-stats').innerHTML = '';
+  document.getElementById('rtable').innerHTML = '';
+  const conc = document.getElementById('mission-risk-conclusions');
+  if (conc) { conc.style.display = 'none'; conc.innerHTML = ''; }
+}
+
+// Called when playback finishes — reveal mission risk analytics
+function onPlaybackComplete() {
+  document.getElementById('mission-risk-section').style.display = 'block';
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MULTI-SIM TRACKER  — ℹ appears inside button when runs are active
+// ══════════════════════════════════════════════════════════════════════════════
+
+const _simRuns = new Map(); // runId -> { pct, phase, startTs, status }
+let _hideTooltipTimer = null;
+let _elapsedTimer = null;
+
+function _simPhaseLabel(pct) {
+  if (pct <  5) return 'INITIALIZING';
+  if (pct < 35) return 'PHYSIOLOGICAL SIM';
+  if (pct < 65) return 'FATIGUE & SLEEP';
+  if (pct < 88) return 'EVENTS & STRESSORS';
+  if (pct < 99) return 'FINALIZING';
+  return 'LOADING RESULTS';
+}
+
+// ── button ℹ overlay management ───────────────────────────────────────────────
+function _updateRunButton() {
+  const icon    = document.getElementById('sim-info-icon');
+  const btn     = document.getElementById('btn-run');
+  if (!icon || !btn) return;
+  const active = [..._simRuns.values()].filter(r => r.status === 'running').length;
+  if (active > 0) {
+    icon.style.display = 'flex';
+    // Show count in superscript if multiple running
+    icon.innerHTML = active > 1
+      ? `ℹ<sup style="font-size:6px;vertical-align:super;color:var(--amber)">${active}</sup>`
+      : 'ℹ';
+    // Shrink button right-padding so text doesn't overlap the icon
+    btn.style.paddingRight = '30px';
+  } else {
+    icon.style.display = 'none';
+    btn.style.paddingRight = '';
+  }
+}
+
+// ── tooltip show / hide ───────────────────────────────────────────────────────
+function showSimTooltip() {
+  cancelHideSimTooltip();
+  _renderTooltip();
+  const tip = document.getElementById('sim-tooltip');
+  if (tip) tip.style.display = 'block';
+  // Tick elapsed every second while open
+  clearInterval(_elapsedTimer);
+  _elapsedTimer = setInterval(_updateElapsed, 1000);
+}
+
+function hideSimTooltip() {
+  const tip = document.getElementById('sim-tooltip');
+  if (tip) tip.style.display = 'none';
+  clearInterval(_elapsedTimer);
+}
+
+function scheduleHideSimTooltip() {
+  _hideTooltipTimer = setTimeout(hideSimTooltip, 180);
+}
+
+function cancelHideSimTooltip() {
+  clearTimeout(_hideTooltipTimer);
+}
+
+// ── tooltip DOM — build once per sim, then update in-place ───────────────────
+function _entryId(runId) { return 'sr-' + runId.replace(/[^a-z0-9]/gi, '_'); }
+
+function _renderTooltip() {
+  const list = document.getElementById('sim-tooltip-list');
+  if (!list) return;
+
+  if (_simRuns.size === 0) {
+    list.innerHTML = '<div style="color:rgba(120,168,200,.35);text-align:center;padding:4px 0;letter-spacing:1px">NO ACTIVE RUNS</div>';
+    return;
+  }
+
+  _simRuns.forEach((r, id) => {
+    const eid   = _entryId(id);
+    const short = id.length > 20 ? id.slice(0,9)+'…'+id.slice(-7) : id;
+    const phaseColor = r.status==='done' ? 'var(--green)' : r.status==='err' ? 'var(--red)' : 'var(--amber)';
+    const fillCls    = r.status==='done' ? 'done' : r.status==='err' ? 'err' : '';
+    const elapsed    = ((Date.now() - r.startTs)/1000).toFixed(0);
+    const phase      = r.status==='done' ? 'COMPLETE' : r.status==='err' ? 'ERROR' : _simPhaseLabel(r.pct);
+
+    let entry = document.getElementById(eid);
+    if (!entry) {
+      // Create for the first time
+      entry = document.createElement('div');
+      entry.id = eid;
+      entry.className = 'sim-run-entry';
+      entry.innerHTML = `
+        <div class="sim-run-header">
+          <span class="sim-run-id-label" title="${id}">${short}</span>
+          <span class="sim-run-phase-label" id="${eid}-phase" style="color:${phaseColor}">${phase}</span>
+        </div>
+        <div class="sim-prog-track">
+          <div class="sim-prog-fill ${fillCls}" id="${eid}-bar" style="width:${r.pct}%"></div>
+        </div>
+        <div class="sim-run-sub">
+          <span id="${eid}-lbl">${_simPhaseLabel(r.pct)}</span>
+          <span id="${eid}-meta">${elapsed}s · ${r.pct.toFixed(0)}%</span>
+        </div>`;
+      list.appendChild(entry);
+    } else {
+      // Update in-place — no DOM rebuild, transitions work cleanly
+      const barEl   = document.getElementById(`${eid}-bar`);
+      const phaseEl = document.getElementById(`${eid}-phase`);
+      const lblEl   = document.getElementById(`${eid}-lbl`);
+      const metaEl  = document.getElementById(`${eid}-meta`);
+      if (barEl)   { barEl.style.width = r.pct + '%'; barEl.className = 'sim-prog-fill ' + fillCls; }
+      if (phaseEl) { phaseEl.textContent = phase; phaseEl.style.color = phaseColor; }
+      if (lblEl)   { lblEl.textContent = _simPhaseLabel(r.pct); }
+      if (metaEl)  { metaEl.textContent = `${elapsed}s · ${r.pct.toFixed(0)}%`; }
+    }
+  });
+
+  // Remove entries for runs that have been pruned from the map
+  list.querySelectorAll('.sim-run-entry').forEach(el => {
+    if (!_simRuns.has(el.id.slice(3).replace(/_/g, '-')) &&
+        !([..._simRuns.keys()].some(k => _entryId(k) === el.id))) {
+      el.remove();
+    }
+  });
+}
+
+function _updateElapsed() {
+  // Only update elapsed+pct text fields — avoids full re-render while open
+  const tip = document.getElementById('sim-tooltip');
+  if (!tip || tip.style.display === 'none') return;
+  _simRuns.forEach((r, id) => {
+    const eid    = _entryId(id);
+    const metaEl = document.getElementById(`${eid}-meta`);
+    if (metaEl) metaEl.textContent = `${((Date.now()-r.startTs)/1000).toFixed(0)}s · ${r.pct.toFixed(0)}%`;
+  });
+}
+
+// ── lifecycle ─────────────────────────────────────────────────────────────────
+function _simTrackAdd(runId) {
+  _simRuns.set(runId, { pct: 0, phase: 'STARTING', startTs: Date.now(), status: 'running' });
+  _updateRunButton();
+  _renderTooltip();
+}
+
+function _simTrackUpdate(runId, pct, phase) {
+  const r = _simRuns.get(runId);
+  if (!r) return;
+  r.pct = pct; r.phase = phase; r.status = 'running';
+  // Always update bars, even if tooltip is hidden
+  const eid  = _entryId(runId);
+  const barEl = document.getElementById(`${eid}-bar`);
+  if (barEl) barEl.style.width = pct + '%';
+  const metaEl = document.getElementById(`${eid}-meta`);
+  if (metaEl) metaEl.textContent = `${((Date.now()-r.startTs)/1000).toFixed(0)}s · ${pct.toFixed(0)}%`;
+  const lblEl  = document.getElementById(`${eid}-lbl`);
+  if (lblEl)  lblEl.textContent = _simPhaseLabel(pct);
+  const phaseEl = document.getElementById(`${eid}-phase`);
+  if (phaseEl) phaseEl.textContent = _simPhaseLabel(pct);
+}
+
+function _simTrackDone(runId) {
+  const r = _simRuns.get(runId);
+  if (!r) return;
+  r.pct = 100; r.status = 'done';
+  _renderTooltip();
+  _updateRunButton();
+  setTimeout(() => {
+    // Remove tooltip row then prune map
+    const el = document.getElementById(_entryId(runId));
+    if (el) el.remove();
+    _simRuns.delete(runId);
+    _updateRunButton();
+  }, 6000);
+}
+
+function _simTrackError(runId, msg) {
+  const r = _simRuns.get(runId);
+  if (!r) return;
+  r.pct = 0; r.status = 'err'; r.phase = msg.slice(0, 50);
+  _renderTooltip();
+  _updateRunButton();
+  setTimeout(() => {
+    const el = document.getElementById(_entryId(runId));
+    if (el) el.remove();
+    _simRuns.delete(runId);
+    _updateRunButton();
+  }, 8000);
+}
+
 async function startSimulation() {
-  const btn = document.getElementById('btn-run');
-  btn.disabled = true;
-  btn.textContent = '◈ SUBMITTING...';
   setApiStatus('busy', 'Submitting simulation to server...', 0);
 
   const cfg = {
@@ -433,37 +727,41 @@ async function startSimulation() {
     save_events: true,
   };
 
+  let runId = null;
   try {
     const resp = await apiPost('/api/simulation/run', cfg);
-    currentRunId = resp.run_id;
-    document.getElementById('bg-cyc').textContent = currentRunId;
-    document.getElementById('api-run-id').textContent = currentRunId;
-    setApiStatus('busy', `Simulation running: ${currentRunId}`, 0, currentRunId);
-    btn.textContent = '◈ RUNNING...';
+    runId = resp.run_id;
+    _simTrackAdd(runId);
 
-    await pollUntilComplete(currentRunId, (pct, status) => {
-      setApiStatus('busy', `[${status.toUpperCase()}] ${pct.toFixed(0)}% complete`, pct, currentRunId);
+    document.getElementById('bg-cyc').textContent = runId;
+    document.getElementById('api-run-id').textContent = runId;
+    setApiStatus('busy', `Running: ${runId}`, 0, runId);
+
+    await pollUntilComplete(runId, (pct, status) => {
+      setApiStatus('busy', `[${status.toUpperCase()}] ${pct.toFixed(0)}%`, pct, runId);
       document.getElementById('api-prog-fill').style.width = pct + '%';
+      _simTrackUpdate(runId, pct, status.toUpperCase());
     });
 
-    setApiStatus('busy', 'Fetching results...', 99, currentRunId);
-    await fetchAllResults(currentRunId);
+    _simTrackUpdate(runId, 99, 'LOADING');
+    setApiStatus('busy', 'Fetching results...', 99, runId);
+    await fetchAllResults(runId);
 
-    setApiStatus('', `Results loaded — ${simResults.state.time.length} timesteps`, 100, currentRunId);
-    btn.textContent = '◈ RUN SIMULATION';
-    btn.disabled = false;
+    currentRunId = runId;
+    _simTrackDone(runId);
+    setApiStatus('', `Results loaded — ${simResults.state.time.length} timesteps`, 100, runId);
 
     document.getElementById('btn-play').disabled  = false;
     document.getElementById('btn-reset').disabled = false;
 
+    onSimReady();
     buildTimeline();
     populateStatusPanel();
     checkHealth();
 
   } catch(e) {
+    if (runId) _simTrackError(runId, e.message);
     setApiStatus('err', 'Error: ' + e.message, 0);
-    btn.textContent = '◈ RUN SIMULATION';
-    btn.disabled = false;
     console.error(e);
   }
 }
@@ -1974,77 +2272,45 @@ function endMission() {
   document.getElementById('phase-disp').textContent = '◈ MISSION COMPLETE — GENERATING REPORT';
   document.getElementById('risk-badge').className = '';
   document.getElementById('risk-badge').textContent = 'COMPLETE';
-  setTimeout(() => showMC(), 500);
-  setTimeout(() => showReport(), 800);
+  onPlaybackComplete();
+  setTimeout(() => showMC(), 300);
+  setTimeout(() => showReport(), 500);
 }
 
 function showMC() {
-  if (!simResults) return;
-  document.getElementById('mc-section').style.display = 'block';
-
-  const state = simResults.state;
-  const times = state.time;
-  const fat   = state.fatigue;
-  const slp   = state.sleep_quality;
-
-  const step = Math.max(1, Math.floor(times.length / 60));
-  const xlbl = [], fatTraj = [], slpTraj = [];
-  for (let i = 0; i < times.length; i += step) {
-    xlbl.push(`${times[i].toFixed(0)}h`);
-    fatTraj.push(+fat[i].toFixed(3));
-    slpTraj.push(+slp[i].toFixed(3));
-  }
-
-  new Chart(document.getElementById('ch-mc-t'), {
-    type:'line',
-    data:{labels:xlbl, datasets:[{data:fatTraj,borderColor:CYAN,borderWidth:2,pointRadius:0,tension:.4,fill:true,backgroundColor:CYAN+'18'}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
-      scales:{x:{ticks:{color:'#7aa8c8',font:{size:8}},grid:{color:'#152844'}},
-              y:{min:0,ticks:{color:'#7aa8c8',font:{size:8}},grid:{color:'#152844'}}}}
-  });
-
-  new Chart(document.getElementById('ch-mc-h'), {
-    type:'line',
-    data:{labels:xlbl, datasets:[{data:slpTraj,borderColor:GREEN,borderWidth:2,pointRadius:0,tension:.4,fill:true,backgroundColor:GREEN+'18'}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
-      scales:{x:{ticks:{color:'#7aa8c8',font:{size:8}},grid:{color:'#152844'}},
-              y:{min:0,max:1,ticks:{color:'#7aa8c8',font:{size:8}},grid:{color:'#152844'}}}}
-  });
-
-  if (simSummary) {
-    const m  = simSummary.metrics;
-    const ra = simSummary.risk_assessment;
-    const stats = [
-      ['PEAK FATIGUE',       m.fatigue.peak.toFixed(2),          m.fatigue.peak>7?'R':m.fatigue.peak>5?'W':''],
-      ['MEAN SLEEP QUALITY', m.sleep_quality.mean.toFixed(2),    m.sleep_quality.mean<.4?'R':m.sleep_quality.mean<.6?'W':''],
-      ['SMS EPISODES',       m.motion_sickness.episodes,         m.motion_sickness.episodes>4?'R':m.motion_sickness.episodes>2?'W':''],
-      ['COMPOSITE RISK',     ra ? ra.composite_risk : '—',       ra && ra.composite_risk==='HIGH'?'R':ra && ra.composite_risk==='MEDIUM'?'W':''],
-    ];
-    document.getElementById('mc-stats').innerHTML = stats.map(([l,v,c])=>
-      `<div class="mcstat"><div class="mcslabel">${l}</div><div class="mcsval ${c}">${v}</div></div>`
-    ).join('');
-  }
+  if (!simResults || !simSummary) return;
+  const m  = simSummary.metrics;
+  const ra = simSummary.risk_assessment;
+  const stats = [
+    ['PEAK FATIGUE',       m.fatigue.peak.toFixed(2),          m.fatigue.peak>7?'R':m.fatigue.peak>5?'W':''],
+    ['MEAN SLEEP QUALITY', m.sleep_quality.mean.toFixed(2),    m.sleep_quality.mean<.4?'R':m.sleep_quality.mean<.6?'W':''],
+    ['SMS EPISODES',       m.motion_sickness.episodes,         m.motion_sickness.episodes>4?'R':m.motion_sickness.episodes>2?'W':''],
+    ['COMPOSITE RISK',     ra ? ra.composite_risk : '—',       ra && ra.composite_risk==='HIGH'?'R':ra && ra.composite_risk==='MEDIUM'?'W':''],
+  ];
+  document.getElementById('mission-risk-stats').innerHTML = stats.map(([l,v,c])=>
+    `<div class="mcstat"><div class="mcslabel">${l}</div><div class="mcsval ${c}">${v}</div></div>`
+  ).join('');
 }
 
 function showReport() {
   if (!simSummary) return;
-  document.getElementById('report-section').style.display = 'block';
   const m  = simSummary.metrics;
   const ra = simSummary.risk_assessment;
-
   const rows = [
-    ['OVERALL RISK LEVEL',   ra ? ra.composite_risk : '—',          ra && ra.composite_risk==='HIGH'?'R':ra && ra.composite_risk==='MEDIUM'?'W':''],
-    ['PEAK FATIGUE INDEX',   m.fatigue.peak.toFixed(3),             m.fatigue.peak>7?'R':m.fatigue.peak>5?'W':''],
-    ['MEAN SLEEP QUALITY',   m.sleep_quality.mean.toFixed(2),       m.sleep_quality.mean<.4?'R':m.sleep_quality.mean<.6?'W':''],
-    ['SLEEP EFFICIENCY',     m.sleep_quality.efficiency.toFixed(1)+'%', m.sleep_quality.efficiency<40?'R':m.sleep_quality.efficiency<60?'W':''],
-    ['SMS EPISODES',         m.motion_sickness.episodes,            m.motion_sickness.episodes>4?'R':m.motion_sickness.episodes>2?'W':''],
-    ['AVG HEART RATE',       m.heart_rate.mean.toFixed(0)+' bpm',   m.heart_rate.mean>100?'W':''],
-    ['HR VARIABILITY',       m.heart_rate.variability.toFixed(1)+' bpm', ''],
-    ['PEAK FATIGUE RISK',    ra ? ra.fatigue_risk : '—',            ra && ra.fatigue_risk==='HIGH'?'R':ra && ra.fatigue_risk==='MEDIUM'?'W':''],
-    ['MISSION DURATION',     (simSummary.duration_hours/60).toFixed(0)+' hours', ''],
+    ['OVERALL RISK LEVEL',  ra ? ra.composite_risk : '—',           ra && ra.composite_risk==='HIGH'?'R':ra && ra.composite_risk==='MEDIUM'?'W':''],
+    ['PEAK FATIGUE INDEX',  m.fatigue.peak.toFixed(3),              m.fatigue.peak>7?'R':m.fatigue.peak>5?'W':''],
+    ['MEAN SLEEP QUALITY',  m.sleep_quality.mean.toFixed(2),        m.sleep_quality.mean<.4?'R':m.sleep_quality.mean<.6?'W':''],
+    ['SLEEP EFFICIENCY',    m.sleep_quality.efficiency.toFixed(1)+'%', m.sleep_quality.efficiency<40?'R':m.sleep_quality.efficiency<60?'W':''],
+    ['SMS EPISODES',        m.motion_sickness.episodes,             m.motion_sickness.episodes>4?'R':m.motion_sickness.episodes>2?'W':''],
+    ['AVG HEART RATE',      m.heart_rate.mean.toFixed(0)+' bpm',    m.heart_rate.mean>100?'W':''],
+    ['HR VARIABILITY',      m.heart_rate.variability.toFixed(1)+' bpm', ''],
+    ['PEAK FATIGUE RISK',   ra ? ra.fatigue_risk : '—',             ra && ra.fatigue_risk==='HIGH'?'R':ra && ra.fatigue_risk==='MEDIUM'?'W':''],
+    ['MISSION DURATION',    (simSummary.duration_hours/60).toFixed(0)+' hours', ''],
   ];
-  document.getElementById('rtable').innerHTML =
-    rows.map(([l,v,c])=>`<tr class="${c}"><td>${l}</td><td>${v}</td></tr>`).join('');
+  document.getElementById('rtable').innerHTML = rows.map(([l,v,c]) =>
+    `<tr class="${c}"><td style="padding:6px 10px;border-bottom:1px solid var(--border)">${l}</td>` +
+    `<td style="padding:6px 10px;border-bottom:1px solid var(--border);text-align:right;color:var(--cyan)">${v}</td></tr>`
+  ).join('');
 }
 
 // ════════════════════════════════════════════════════════
@@ -2052,18 +2318,23 @@ function showReport() {
 // ════════════════════════════════════════════════════════
 
 const sliders = [
-  ['ctrl-cyc', 'lbl-cyc', v=>`${v} days`],
+  ['ctrl-cyc',  'lbl-cyc',  v=>`${v} days`],
   ['ctrl-lam',  'lbl-lam',  v=>(v/10).toFixed(2)+'/day'],
-  ['ctrl-rec',  'lbl-rec',  v=>(v/10).toFixed(1)+'×'],
-  ['ctrl-fsens','lbl-fsens',v=>(v/10).toFixed(1)+'×'],
-  ['ctrl-spd', 'lbl-spd', v=>`${(10/(v/3)).toFixed(0)}s/day`],
+  ['ctrl-rec',  'lbl-rec',  v=>(v/10).toFixed(1)+'x'],
+  ['ctrl-fsens','lbl-fsens',v=>(v/10).toFixed(1)+'x'],
 ];
 sliders.forEach(([id,lid,fmt])=>{
   const el = document.getElementById(id);
   const lbl= document.getElementById(lid);
+  if (!el || !lbl) return;
   lbl.textContent = fmt(el.value);
   el.oninput = () => lbl.textContent = fmt(el.value);
 });
+{
+  const spdEl  = document.getElementById('ctrl-spd');
+  const spdLbl = document.getElementById('lbl-spd');
+  if (spdEl && spdLbl) spdLbl.textContent = (spdEl.value/3).toFixed(1)+'x';
+}
 
 // ════════════════════════════════════════════════════════
 // LOAD EXISTING SIMULATION
@@ -2105,27 +2376,34 @@ async function refreshRunList() {
       }
     }
 
-    allRuns = runs;
-    spinner.textContent = `${runs.length} run${runs.length!==1?'s':''} found`;
+    // Filter to completed only — failed runs have no results to load
+    const completedRuns = runs.filter(r => (r.status || 'completed') === 'completed');
+    allRuns = completedRuns;
+    spinner.textContent = `${completedRuns.length} completed run${completedRuns.length!==1?'s':''} found`;
 
-    if (!runs.length) {
+    if (!completedRuns.length) {
       list.innerHTML = '<div id="load-empty">NO COMPLETED RUNS FOUND</div>';
       return;
     }
 
-    runs.sort((a,b) => {
+    completedRuns.sort((a,b) => {
       const ta = a.created_at || a.run_id || '';
       const tb = b.created_at || b.run_id || '';
       return tb.localeCompare(ta);
     });
 
-    runs.forEach(run => {
-      const id       = run.run_id || run.id || run;
-      const status   = run.status || 'completed';
-      const duration = run.mission_duration_hours ? `${(run.mission_duration_hours/24).toFixed(0)}d` : '';
-      const steps    = run.timesteps ? `${run.timesteps} steps` : '';
-      const ts       = run.created_at ? new Date(run.created_at).toLocaleString() : '';
-      const meta     = [duration, steps, ts].filter(Boolean).join(' · ');
+    completedRuns.forEach(run => {
+      const id  = run.run_id || run.id || run;
+      const cfg = run.config || {};
+
+      // Build params line from whatever config fields exist
+      const days  = cfg.mission_duration_hours ? `${Math.round(cfg.mission_duration_hours/24)}d` : null;
+      const sms   = cfg.sms_rate_per_day       ? `λ ${cfg.sms_rate_per_day.toFixed(2)}/day`      : null;
+      const rec   = cfg.recovery_factor        ? `rec ${cfg.recovery_factor.toFixed(1)}×`         : null;
+      const fsens = cfg.fatigue_sensitivity    ? `sens ${cfg.fatigue_sensitivity.toFixed(1)}×`     : null;
+      const params = [days, sms, rec, fsens].filter(Boolean).join('  ·  ');
+
+      const ts = run.created_at ? new Date(run.created_at).toLocaleString() : '';
 
       const div = document.createElement('div');
       div.className = 'run-item';
@@ -2133,9 +2411,10 @@ async function refreshRunList() {
       div.innerHTML = `
         <div style="flex:1;min-width:0">
           <div class="run-id">${id}</div>
-          ${meta ? `<div class="run-meta">${meta}</div>` : ''}
+          <div style="font-size:9px;color:var(--cyan);letter-spacing:1px;margin-top:2px">${params || '—'}</div>
+          ${ts ? `<div class="run-meta" style="margin-top:1px">${ts}</div>` : ''}
         </div>
-        <span class="run-badge ${status}">${status.toUpperCase()}</span>`;
+        <span class="run-badge completed">COMPLETED</span>`;
       div.onclick = () => selectRun(id, div);
       list.appendChild(div);
     });
@@ -2151,6 +2430,64 @@ function selectRun(id, el) {
   el.classList.add('selected');
   selectedRunId = id;
   document.getElementById('btn-load-confirm').disabled = false;
+  document.getElementById('btn-delete-run').disabled = false;
+}
+
+async function deleteSelectedRun() {
+  if (!selectedRunId) return;
+  if (!confirm(`Delete run "${selectedRunId}"? This cannot be undone.`)) return;
+  const btn = document.getElementById('btn-delete-run');
+  btn.disabled = true;
+  btn.textContent = '⟳ DELETING...';
+  try {
+    // Try both endpoint patterns
+    let ok = false;
+    for (const path of [`/api/simulation/${selectedRunId}`, `/api/data/runs/${selectedRunId}`]) {
+      try {
+        const r = await fetch(API_BASE + path, { method: 'DELETE' });
+        if (r.ok) { ok = true; break; }
+      } catch {}
+    }
+    if (!ok) throw new Error('Server returned an error — run may not have a delete endpoint yet');
+    selectedRunId = null;
+    document.getElementById('btn-load-confirm').disabled = true;
+    btn.disabled = true;
+    btn.textContent = '✕ DELETE';
+    await refreshRunList();
+  } catch(e) {
+    alert('Delete failed: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = '✕ DELETE';
+  }
+}
+
+// Sync mission control sliders to the config a run was originally run with
+function syncControlsToConfig(cfg) {
+  if (!cfg) return;
+  // Mission duration — always present
+  if (cfg.mission_duration_hours) {
+    const days = Math.round(cfg.mission_duration_hours / 24);
+    const el = document.getElementById('ctrl-cyc');
+    if (el) { el.value = days; document.getElementById('lbl-cyc').textContent = days + ' days'; }
+  }
+  // SMS rate — present on runs started after the slider was added
+  if (cfg.sms_rate_per_day !== undefined) {
+    const raw = Math.round(cfg.sms_rate_per_day * 10);
+    const el = document.getElementById('ctrl-lam');
+    if (el) { el.value = raw; document.getElementById('lbl-lam').textContent = (raw/10).toFixed(2) + '/day'; }
+  }
+  // Recovery factor
+  if (cfg.recovery_factor !== undefined) {
+    const raw = Math.round(cfg.recovery_factor * 10);
+    const el = document.getElementById('ctrl-rec');
+    if (el) { el.value = raw; document.getElementById('lbl-rec').textContent = (raw/10).toFixed(1) + '×'; }
+  }
+  // Fatigue sensitivity
+  if (cfg.fatigue_sensitivity !== undefined) {
+    const raw = Math.round(cfg.fatigue_sensitivity * 10);
+    const el = document.getElementById('ctrl-fsens');
+    if (el) { el.value = raw; document.getElementById('lbl-fsens').textContent = (raw/10).toFixed(1) + '×'; }
+  }
 }
 
 async function confirmLoad() {
@@ -2171,14 +2508,26 @@ async function confirmLoad() {
       });
     }
 
+    // Fetch results + config in parallel
     setApiStatus('busy', 'Fetching results...', 80, currentRunId);
-    await fetchAllResults(currentRunId);
+    const [, cfgResult] = await Promise.allSettled([
+      fetchAllResults(currentRunId),
+      apiGet(`/api/simulation/config/${currentRunId}`).catch(() => null),
+    ]);
+    const runCfg = cfgResult.status === 'fulfilled' ? cfgResult.value : null;
+
+    // Sync sliders — will silently skip any field the old run didn't store
+    syncControlsToConfig(runCfg);
+
+    // Reset vitals so stale values from previous run don't show
+    setVital('hr','—',''); setVital('fat','—',''); setVital('str','—',''); setVital('spo2','—','');
 
     setApiStatus('', `Loaded ${currentRunId} — ${simResults.state.time.length} timesteps`, 100, currentRunId);
 
     document.getElementById('btn-play').disabled  = false;
     document.getElementById('btn-reset').disabled = false;
 
+    onSimReady();
     buildTimeline();
     populateStatusPanel();
     checkHealth();
@@ -2500,7 +2849,7 @@ async function loadAnalytics(runId) {
  
 function renderRiskWindows(riskReport) {
   if (!riskReport) return;
-  const stats = document.getElementById('mc-stats');
+  const stats = document.getElementById('mission-risk-stats');
   const th    = riskReport.threshold_metrics || {};
   const fat   = th.fatigue   || {};
   const slp   = th.sleep_quality || {};
@@ -2519,7 +2868,7 @@ function renderRiskWindows(riskReport) {
 function renderTrends(trendReport) {
   if (!trendReport || !trendReport.trends) return;
   const trends  = trendReport.trends;
-  const el      = document.getElementById('mc-conclusions');
+  const el      = document.getElementById('mission-risk-conclusions');
   if (!el) return;
  
   const lines = Object.entries(trends)
@@ -2539,7 +2888,7 @@ function renderTrends(trendReport) {
 function renderCumulativeLoad(riskReport) {
   if (!riskReport || !riskReport.cumulative_load) return;
   const cl  = riskReport.cumulative_load;
-  const el  = document.getElementById('mc-conclusions');
+  const el  = document.getElementById('mission-risk-conclusions');
   if (!el) return;
  
   const loadHtml =
@@ -2554,35 +2903,126 @@ function renderCumulativeLoad(riskReport) {
  
  
 // ── Run Monte Carlo from the frontend and render envelope charts ─────────────
+// ── MC progress bar helpers ────────────────────────────────────────────────────
+let _mcProgTimer = null;
+
+function _mcProgStart(nRuns) {
+  const wrap    = document.getElementById('mc-progress-wrap');
+  const results = document.getElementById('mc-results-wrap');
+  if (wrap)    wrap.style.display    = 'block';
+  if (results) results.style.display = 'none';
+
+  const bar     = document.getElementById('mc-prog-bar');
+  const pct     = document.getElementById('mc-prog-pct');
+  const runsEl  = document.getElementById('mc-prog-runs');
+  const label   = document.getElementById('mc-prog-label');
+  const elEl    = document.getElementById('mcs-elapsed-val');
+  const etaEl   = document.getElementById('mcs-eta-val');
+  const trajEl  = document.getElementById('mcs-traj-val');
+
+  const start = Date.now();
+  let progress = 0;
+
+  // Estimate run time: ~20ms/run baseline, grows with n
+  const estMs = Math.min(nRuns * 25 + 400, 8000);
+
+  _mcProgTimer = setInterval(() => {
+    const elapsed = (Date.now() - start) / 1000;
+    // Ease-in animation: fast start, plateau below 90% until resolved
+    progress = Math.min(0.90, 1 - Math.exp(-elapsed / (estMs / 1000) * 2.5));
+    const fakeDone = Math.round(progress * nRuns);
+
+    if (bar)    bar.style.width = (progress * 100).toFixed(1) + '%';
+    if (pct)    pct.textContent = (progress * 100).toFixed(0) + '%';
+    if (runsEl) runsEl.textContent = `${fakeDone} / ${nRuns} trajectories`;
+    if (label) {
+      if (progress < 0.2)       label.textContent = 'SEEDING RANDOM TRAJECTORIES...';
+      else if (progress < 0.5)  label.textContent = 'SIMULATING PHYSIOLOGICAL RESPONSES...';
+      else if (progress < 0.75) label.textContent = 'COMPUTING FATIGUE ENVELOPES...';
+      else                       label.textContent = 'AGGREGATING RISK DISTRIBUTIONS...';
+    }
+    if (trajEl)  trajEl.textContent = fakeDone;
+    if (elEl)    elEl.textContent   = elapsed.toFixed(1) + 's';
+    const remaining = elapsed > 0 ? (elapsed / progress) - elapsed : '—';
+    if (etaEl)   etaEl.textContent  = typeof remaining === 'number' ? remaining.toFixed(1) + 's' : '—';
+  }, 80);
+}
+
+function _mcProgFinish() {
+  clearInterval(_mcProgTimer);
+  _mcProgTimer = null;
+  const bar  = document.getElementById('mc-prog-bar');
+  const pct  = document.getElementById('mc-prog-pct');
+  const runs = document.getElementById('mc-prog-runs');
+  const lbl  = document.getElementById('mc-prog-label');
+  if (bar)  bar.style.width = '100%';
+  if (pct)  pct.textContent = '100%';
+  if (lbl)  lbl.textContent = 'COMPLETE — RENDERING ENVELOPES';
+  setTimeout(() => {
+    const wrap    = document.getElementById('mc-progress-wrap');
+    const results = document.getElementById('mc-results-wrap');
+    if (wrap)    wrap.style.display    = 'none';
+    if (results) results.style.display = 'block';
+  }, 500);
+}
+
+function _mcProgError(msg) {
+  clearInterval(_mcProgTimer);
+  _mcProgTimer = null;
+  const lbl = document.getElementById('mc-prog-label');
+  const bar = document.getElementById('mc-prog-bar');
+  if (lbl) { lbl.textContent = '✕ ' + msg; lbl.style.color = 'var(--red)'; }
+  if (bar) bar.style.background = 'var(--red)';
+}
+
 async function runMonteCarlo() {
   const btn = document.getElementById('btn-mc');
   if (btn) { btn.disabled = true; btn.textContent = '⟳ RUNNING MC...'; }
+
+  // Show MC section with progress, hide BioGears sections
+  document.getElementById('tl-section').style.display = 'none';
+  document.getElementById('mission-risk-section').style.display = 'none';
+  document.getElementById('mc-section').style.display = 'block';
+
+  // Clear stale MC charts/data
+  if (mcFatigueChart) { mcFatigueChart.destroy(); mcFatigueChart = null; }
+  if (mcSleepChart)   { mcSleepChart.destroy();   mcSleepChart   = null; }
+  document.getElementById('mc-stats').innerHTML = '';
+  const concEl = document.getElementById('mc-conclusions');
+  if (concEl) { concEl.style.display = 'none'; concEl.innerHTML = ''; }
+
+  const nRuns = parseInt(document.getElementById('ctrl-mc-runs')?.value || 50);
+  _mcProgStart(nRuns);
  
   try {
     const cfg = {
-      n_runs:                 50,
+      n_runs:                 nRuns,
       mission_duration_hours: parseInt(document.getElementById('ctrl-cyc')?.value || 30) * 24,
       time_step_minutes:      30,
       ms_lambda:              parseFloat(document.getElementById('ctrl-lam')?.value || 7) / 100,
-      risk_fatigue_threshold: 5.0,
-      risk_sleep_threshold:   0.4,
+      baseline_sleep_quality: parseFloat(document.getElementById('ctrl-mc-slp')?.value || 80) / 100,
+      risk_fatigue_threshold: parseFloat(document.getElementById('ctrl-mc-fat-thr')?.value || 50) / 10,
+      risk_sleep_threshold:   parseFloat(document.getElementById('ctrl-mc-slp-thr')?.value || 40) / 100,
     };
  
-    const res  = await fetch(`${API}/api/simulation/monte-carlo`, {
+    const res = await fetch(`${API}/api/simulation/monte-carlo`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(cfg),
     });
     if (!res.ok) throw new Error(`MC endpoint returned ${res.status}`);
     const mc = await res.json();
- 
-    renderMCCharts(mc);
-    renderMCStats(mc);
-    renderMCConclusions(mc);
+
+    _mcProgFinish();
+    setTimeout(() => {
+      renderMCCharts(mc);
+      renderMCStats(mc);
+      renderMCConclusions(mc);
+    }, 520);
  
   } catch (e) {
     console.error('MC run failed:', e);
-    alert('Monte Carlo failed: ' + e.message);
+    _mcProgError(e.message);
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '◈ RUN MONTE CARLO'; }
   }

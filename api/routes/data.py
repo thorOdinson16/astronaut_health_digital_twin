@@ -345,9 +345,17 @@ def _time_above_threshold(time: List[float], values: List[float], threshold: flo
 
 def _compute_risk_summary(state: Dict, events: List[Dict]) -> Dict:
     peak_fatigue = float(max(state['fatigue']))
-    fatigue_risk = "HIGH" if peak_fatigue > 7 else "MEDIUM" if peak_fatigue > 4 else "LOW"
+    mean_fatigue = float(np.mean(state['fatigue']))
 
-    ms_events = [e for e in events if 'motion' in e['type'].lower()]
+    # Fatigue risk: peak drives classification, but mean confirms sustained exposure
+    if peak_fatigue > 8.0 or mean_fatigue > 6.0:
+        fatigue_risk = "HIGH"
+    elif peak_fatigue > 5.0 or mean_fatigue > 3.5:
+        fatigue_risk = "MEDIUM"
+    else:
+        fatigue_risk = "LOW"
+
+    ms_events  = [e for e in events if 'motion' in e['type'].lower()]
     ms_burden  = sum(e.get('severity', 0) * e.get('duration', 0) for e in ms_events)
     ms_risk    = "HIGH" if ms_burden > 20 else "MEDIUM" if ms_burden > 10 else "LOW"
 
@@ -355,13 +363,28 @@ def _compute_risk_summary(state: Dict, events: List[Dict]) -> Dict:
     sleep_risk = "HIGH" if avg_sleep < 0.4 else "MEDIUM" if avg_sleep < 0.6 else "LOW"
 
     risk_scores = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}
-    composite   = (risk_scores[fatigue_risk] + risk_scores[ms_risk] + risk_scores[sleep_risk]) / 3
+
+    # Fatigue is the primary mission-safety driver — 50% weight
+    composite = (
+        0.50 * risk_scores[fatigue_risk] +
+        0.25 * risk_scores[ms_risk] +
+        0.25 * risk_scores[sleep_risk]
+    )
+
+    # Any HIGH factor forces at least MEDIUM
+    if "HIGH" in (fatigue_risk, ms_risk, sleep_risk):
+        composite = max(composite, 1.51)
+
+    # Peak fatigue above 8 forces composite HIGH regardless of other factors
+    if peak_fatigue > 8.0:
+        composite = 3.0
+
     composite_risk = "HIGH" if composite > 2.5 else "MEDIUM" if composite > 1.5 else "LOW"
 
     return {
-        "fatigue_risk":        fatigue_risk,
+        "fatigue_risk":         fatigue_risk,
         "motion_sickness_risk": ms_risk,
-        "sleep_risk":          sleep_risk,
-        "composite_risk":      composite_risk,
-        "critical_events":     len([e for e in events if e.get('severity', 0) > 0.8])
+        "sleep_risk":           sleep_risk,
+        "composite_risk":       composite_risk,
+        "critical_events":      len([e for e in events if e.get('severity', 0) > 0.8]),
     }

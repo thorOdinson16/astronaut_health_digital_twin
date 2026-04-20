@@ -207,12 +207,10 @@ async def run_simulation(
         run_id = await sim_manager.create_run(config.dict())
         
         # Start simulation in background
-        background_tasks.add_task(
-            execute_simulation,
-            run_id=run_id,
-            config=config,
-            sim_manager=sim_manager
-        )
+        task = asyncio.create_task(execute_simulation(run_id, config, sim_manager))
+        run = sim_manager.get_run(run_id)
+        if run:
+            run.task = task
         
         # Estimate completion time (rough estimate)
         timesteps = int(config.mission_duration_hours * 60 / config.time_step_minutes)
@@ -300,7 +298,7 @@ async def stop_simulation(
     Returns:
         Confirmation message
     """
-    success = sim_manager.stop_run(run_id)
+    success = await sim_manager.stop_run(run_id)
     if not success:
         raise HTTPException(status_code=404, detail=f"Run ID {run_id} not found or cannot be stopped")
     
@@ -322,7 +320,7 @@ async def delete_simulation(
     Returns:
         Confirmation message
     """
-    success = sim_manager.delete_run(run_id)
+    success = await sim_manager.delete_run(run_id)
     if not success:
         raise HTTPException(status_code=404, detail=f"Run ID {run_id} not found")
     

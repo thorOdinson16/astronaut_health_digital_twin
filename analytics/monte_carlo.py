@@ -24,11 +24,11 @@ def _run_single_trajectory(
     baseline_hr: float,
     baseline_sleep_quality: float,
     initial_fatigue: float,
-    ms_lambda: float,          # Poisson rate for motion sickness (events/hour)
-    alpha_sleep: float,        # fatigue accumulation from sleep debt
-    beta_motion: float,        # fatigue accumulation from motion stress
-    gamma_recovery: float,     # fatigue recovery rate
-    recovery_threshold: float, # sleep quality threshold for recovery
+    ms_lambda: float,           # Poisson rate for motion sickness (events/hour)
+    alpha_sleep: float,         # fatigue accumulation rate from sleep debt
+    beta_motion: float,         # fatigue accumulation rate from motion stress
+    gamma_recovery: float,      # fatigue recovery rate during good sleep
+    recovery_threshold: float,  # min sleep quality needed to trigger recovery
     fatigue_to_ms_threshold: float,
     fatigue_to_ms_prob_slope: float,
     risk_fatigue_threshold: float,
@@ -42,6 +42,15 @@ def _run_single_trajectory(
     """
     rng = np.random.default_rng(seed)
 
+    # ── per-run physiological variability ──────────────────────────────
+    # Each simulated astronaut has slightly different physiology — this is
+    # what creates meaningful spread across MC runs instead of everyone
+    # converging to the same trajectory.
+    run_alpha    = alpha_sleep    * float(rng.uniform(0.75, 1.35))   # ±30% sleep sensitivity
+    run_beta     = beta_motion    * float(rng.uniform(0.70, 1.40))   # ±40% motion sensitivity
+    run_gamma    = gamma_recovery * float(rng.uniform(0.80, 1.25))   # ±25% recovery capacity
+    run_baseline = baseline_sleep_quality * float(rng.uniform(0.88, 1.06))  # baseline sleep variation
+
     # ── initialise arrays ──────────────────────────────────────────────
     hr            = np.zeros(timesteps, dtype=np.float32)
     sleep_quality = np.zeros(timesteps, dtype=np.float32)
@@ -52,8 +61,11 @@ def _run_single_trajectory(
     # Baseline trajectories (beta sleep, normal HR, circadian)
     time_hours = np.arange(timesteps) * dt_hours
     circadian  = 5.0 * np.sin(2 * np.pi * time_hours / 24.0)
-    hr[:]            = np.clip(rng.normal(baseline_hr, 5.0, timesteps) + circadian, 40, 200)
-    sleep_quality[:] = np.clip(rng.beta(5.0, 2.0, timesteps), 0.05, 1.0)
+    hr[:]            = np.clip(rng.normal(baseline_hr, 6.0, timesteps) + circadian, 40, 200)
+    # Sleep quality shaped around each astronaut's personal baseline
+    slp_a = max(1.0, run_baseline * 6.0)
+    slp_b = max(1.0, (1.0 - run_baseline) * 4.0 + 1.0)
+    sleep_quality[:] = np.clip(rng.beta(slp_a, slp_b, timesteps), 0.05, 1.0)
     fatigue[0]       = initial_fatigue
 
     ms_events: List[Dict] = []
@@ -89,8 +101,8 @@ def _run_single_trajectory(
             recovery       = 0.0
             if sq > recovery_threshold:
                 sq_factor = (sq - recovery_threshold) / (1.0 - recovery_threshold)
-                recovery  = gamma_recovery * sq_factor * dt_hours
-            delta = alpha_sleep * sleep_deficit * dt_hours + beta_motion * motion_stress * dt_hours - recovery
+                recovery  = run_gamma * sq_factor * dt_hours
+            delta = run_alpha * sleep_deficit * dt_hours + run_beta * motion_stress * dt_hours - recovery
             fatigue[t] = float(np.clip(fatigue[t - 1] + delta, 0.0, 10.0))
 
         # --- stress proxy ---
@@ -114,7 +126,7 @@ def _run_single_trajectory(
     recovery_time_h = float(recovered[0] * dt_hours) if len(recovered) > 0 else float(len(after_peak) * dt_hours)
 
     # Cumulative fatigue load (area under curve)
-    cumulative_fatigue = float(np.trapz(fatigue, dx=dt_hours))
+    cumulative_fatigue = float(np.trapezoid(fatigue, dx=dt_hours))
 
     return {
         # scalar metrics
@@ -147,10 +159,10 @@ def run_monte_carlo(
     baseline_sleep_quality: float = 0.8,
     initial_fatigue: float = 0.0,
     ms_lambda: float = 0.03,
-    alpha_sleep: float = 0.3,
-    beta_motion: float = 0.5,
-    gamma_recovery: float = 0.08,
-    recovery_threshold: float = 0.6,
+    alpha_sleep: float = 0.25,        # calibrated: gives realistic 0-10 spread across runs
+    beta_motion: float = 0.35,        # reduced from 0.5: SMS events no longer dominant
+    gamma_recovery: float = 0.11,     # calibrated: was 0.08 (too low) — real recovery now possible
+    recovery_threshold: float = 0.55, # slightly easier to enter recovery: was 0.6
     fatigue_to_ms_threshold: float = 3.0,
     fatigue_to_ms_prob_slope: float = 0.05,
     risk_fatigue_threshold: float = 5.0,
