@@ -133,25 +133,47 @@ input[type=range]{width:100%;height:2px;accent-color:var(--cyan);cursor:pointer}
 /* LOAD MODAL */
 #load-overlay{display:none;position:fixed;inset:0;background:rgba(2,8,18,.88);z-index:1000;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
 #load-overlay.open{display:flex}
-#load-modal{background:var(--panel);border:1px solid var(--border2);border-radius:4px;padding:20px;width:520px;max-width:95vw;max-height:80vh;display:flex;flex-direction:column;gap:12px}
+#load-modal{background:var(--panel);border:1px solid var(--border2);border-radius:4px;padding:18px;width:640px;max-width:96vw;max-height:82vh;display:flex;flex-direction:column;gap:10px}
 #load-modal .ptitle{margin:0;border-bottom:1px solid var(--border);padding-bottom:8px}
-#load-list{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:5px;max-height:340px}
-.run-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:3px;cursor:pointer;transition:border-color .2s,background .2s}
+#load-modal-body{display:flex;flex-direction:column;min-height:0;flex:1;overflow:hidden;height:60vh;max-height:60vh}
+#load-list-wrap{border:1px solid var(--border);border-radius:3px;background:rgba(0,212,255,.02);display:flex;flex-direction:column;min-height:0;flex:1;overflow:hidden}
+#load-list{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:4px;padding:8px;min-height:0}
+.run-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:3px;cursor:pointer;transition:border-color .2s,background .2s}
 .run-item:hover{border-color:var(--cyan);background:rgba(0,212,255,.04)}
 .run-item.selected{border-color:var(--cyan);background:rgba(0,212,255,.08)}
-.run-id{font-size:9px;color:var(--cyan);letter-spacing:1px;flex:1}
-.run-meta{font-size:8px;color:var(--text);text-align:right;line-height:1.6}
-.run-badge{font-size:7px;padding:2px 6px;border-radius:2px;letter-spacing:1px}
+.run-id{font-size:9px;color:var(--cyan);letter-spacing:1px}
+.run-meta{font-size:8px;color:var(--text);line-height:1.6}
+.run-badge{font-size:7px;padding:2px 6px;border-radius:2px;letter-spacing:1px;flex-shrink:0}
 .run-badge.completed{background:rgba(0,232,122,.1);color:var(--green);border:1px solid rgba(0,232,122,.3)}
 .run-badge.failed{background:rgba(255,64,64,.1);color:var(--red);border:1px solid rgba(255,64,64,.3)}
 .run-badge.running{background:rgba(255,170,0,.1);color:var(--amber);border:1px solid rgba(255,170,0,.3)}
+.run-badge.pending{background:rgba(0,212,255,.1);color:var(--cyan);border:1px solid rgba(0,212,255,.35)}
 #load-empty{color:rgba(120,168,200,.35);font-size:10px;text-align:center;padding:30px;letter-spacing:2px}
 #load-modal-btns{display:flex;gap:8px}
 #load-modal-btns .btn{flex:1;margin:0}
 #load-refresh-spinner{font-size:8px;color:var(--text);letter-spacing:1px;height:14px;text-align:center}
 
+/* Shared parameter cards */
+.param-empty{color:rgba(120,168,200,.45);font-size:8px;letter-spacing:1px;padding:8px 0;text-align:center}
+.param-section{border:1px solid rgba(34,51,68,.65);border-radius:3px;padding:6px;margin-bottom:6px;background:rgba(0,0,0,.12)}
+.param-section:last-child{margin-bottom:0}
+.param-section-title{font-size:7px;color:var(--cyan);letter-spacing:2px;margin-bottom:5px}
+.param-row{display:flex;justify-content:space-between;gap:8px;font-size:8px;line-height:1.5;padding:1px 0}
+.param-key{color:rgba(120,168,200,.85);white-space:nowrap}
+.param-val{color:var(--textbright);text-align:right;overflow:hidden;text-overflow:ellipsis}
+
 /* Zoom hint */
 #zoom-hint{font-size:8px;color:rgba(120,168,200,.5);letter-spacing:2px;text-align:center;padding:2px 0}
+
+@media (max-width:980px){
+  #load-modal{width:96vw;padding:14px}
+  #load-modal-body{height:55vh;max-height:55vh}
+  #load-list-wrap{min-height:0}
+}
+
+@media (max-width:900px){
+  #sim-tooltip{width:94vw}
+}
 
 /* Scrollbar */
 ::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:var(--panel)}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
@@ -177,18 +199,40 @@ input[type=range]{width:100%;height:2px;accent-color:var(--cyan);cursor:pointer}
 #mc-prog-bar{animation:prog-scan 1.6s ease-in-out infinite}
 
 /* SIM INFO TOOLTIP */
-#sim-tooltip{pointer-events:auto}
+#sim-info-icon{opacity:0;transform:translateX(4px);transition:opacity .22s ease,transform .22s ease;pointer-events:none}
+#sim-info-icon.visible{opacity:.95;transform:translateX(0);pointer-events:auto}
 #sim-info-icon:hover{opacity:1!important}
-.sim-run-entry{padding:5px 0;border-bottom:1px solid rgba(21,40,68,.5)}
-.sim-run-entry:last-child{border-bottom:none;padding-bottom:0}
-.sim-run-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:3px}
-.sim-run-id-label{color:var(--cyan);letter-spacing:1px;font-size:8px}
-.sim-run-phase-label{font-size:8px}
-.sim-prog-track{background:var(--border);border-radius:2px;height:3px;overflow:hidden;margin-bottom:3px}
+#sim-tooltip{width:510px;max-width:92vw;opacity:0;transform:translateY(-5px);pointer-events:none;transition:opacity .22s ease,transform .22s ease}
+#sim-tooltip.visible{opacity:1;transform:translateY(0);pointer-events:auto}
+#sim-tooltip-list{overflow-y:auto;padding-right:2px}
+@keyframes sim-row-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+@keyframes sim-row-out{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(-4px)}}
+.sim-run-entry{padding:6px 7px;border:1px solid rgba(21,40,68,.75);border-radius:3px;background:rgba(0,212,255,.03);margin-bottom:5px;animation:sim-row-in .22s ease forwards;cursor:default}
+.sim-run-entry:last-child{margin-bottom:0}
+.sim-run-entry.leaving{animation:sim-row-out .2s ease forwards}
+.sim-run-entry:hover{border-color:rgba(0,212,255,.55);background:rgba(0,212,255,.07)}
+.sim-run-entry.active-preview{border-color:rgba(0,212,255,.7);box-shadow:0 0 0 1px rgba(0,212,255,.15) inset}
+.sim-run-header{display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:4px}
+.sim-run-id-label{color:var(--cyan);letter-spacing:1px;font-size:8px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sim-run-actions{display:flex;align-items:center;gap:6px}
+.sim-run-phase-label{font-size:7px;letter-spacing:1px;padding:1px 5px;border-radius:999px;border:1px solid var(--border2);background:rgba(0,212,255,.08)}
+.sim-run-action{background:rgba(0,212,255,.08);border:1px solid var(--border2);color:var(--textbright);font:7px var(--mono);letter-spacing:1px;padding:1px 5px;border-radius:2px;cursor:pointer;transition:all .2s;opacity:0;transform:translateX(4px);pointer-events:none}
+.sim-run-action.cancel{border-color:rgba(255,170,0,.4);color:var(--amber)}
+.sim-run-action.cancel:hover:not(:disabled){background:rgba(255,170,0,.15)}
+.sim-run-action:disabled{opacity:.35;cursor:not-allowed}
+.sim-run-entry:hover .sim-run-action.cancel,.sim-run-entry.cancelling .sim-run-action.cancel{opacity:1;transform:translateX(0);pointer-events:auto}
+.sim-prog-track{background:var(--border);border-radius:2px;height:3px;overflow:hidden;margin-bottom:4px}
 .sim-prog-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--cyan),var(--purple));transition:width .5s ease}
 .sim-prog-fill.done{background:var(--green)}
 .sim-prog-fill.err{background:var(--red)}
-.sim-run-sub{display:flex;justify-content:space-between;color:rgba(120,168,200,.45);font-size:7px}
+.sim-prog-fill.cancelled{background:var(--amber)}
+.sim-run-sub{display:flex;justify-content:flex-end;color:rgba(120,168,200,.55);font-size:7px;letter-spacing:.5px}
+
+@media (max-width:900px){
+  #sim-tooltip{width:94vw;right:50%!important;left:auto!important;transform:translateX(50%) translateY(-5px)}
+  #sim-tooltip.visible{transform:translateX(50%) translateY(0)}
+  #sim-tooltip-list{max-height:220px}
+}
 </style>
 </head>
 <body>
@@ -224,24 +268,24 @@ input[type=range]{width:100%;height:2px;accent-color:var(--cyan);cursor:pointer}
     <div class="crow"><div class="clabel">FATIGUE SENSITIVITY <span id="lbl-fsens">1.0×</span></div><input type="range" id="ctrl-fsens" min="5" max="20" value="10" step="1"></div>
 
     <div id="run-btn-wrap" style="position:relative">
-      <button type="button" class="btn primary" id="btn-run" onclick="startSimulation()" style="width:100%">◈ RUN SIMULATION</button>
+      <button type="button" class="btn primary" id="btn-run" onclick="startSimulation(event)" style="width:100%">◈ RUN SIMULATION</button>
       <!-- ℹ overlay — sits on top of button's right edge, only visible when sims are active -->
       <div id="sim-info-icon"
-           style="display:none;position:absolute;right:0;top:0;bottom:0;width:26px;
+           style="display:flex;position:absolute;right:0;top:5px;bottom:0;width:26px;
                   align-items:center;justify-content:center;
                   font-size:12px;cursor:default;z-index:10;
-                  color:var(--amber);font-family:sans-serif"
+                   color:var(--amber);font-family:sans-serif"
            onmouseenter="showSimTooltip()" onmouseleave="scheduleHideSimTooltip()"
            onclick="event.stopPropagation()">ℹ</div>
       <!-- SIM PROGRESS TOOLTIP -->
       <div id="sim-tooltip"
-           onmouseenter="cancelHideSimTooltip()" onmouseleave="scheduleHideSimTooltip()"
-           style="display:none;position:absolute;top:calc(100% + 5px);left:0;right:0;z-index:600;
-                  background:#050f1e;border:1px solid var(--border2);border-radius:4px;
-                  padding:10px 11px;font-family:var(--mono);font-size:9px;
-                  box-shadow:0 10px 30px rgba(0,0,0,.7)">
+             onmouseenter="cancelHideSimTooltip()" onmouseleave="scheduleHideSimTooltip()"
+             style="display:block;position:absolute;top:calc(100% + 5px);left:0;right:auto;z-index:600;
+                    background:#050f1e;border:1px solid var(--border2);border-radius:4px;
+                    padding:10px 11px;font-family:var(--mono);font-size:9px;
+                    box-shadow:0 10px 30px rgba(0,0,0,.7)">
         <div style="color:var(--cyan);letter-spacing:2px;font-size:8px;border-bottom:1px solid var(--border);padding-bottom:5px;margin-bottom:8px">◈ ACTIVE SIMULATIONS</div>
-        <div id="sim-tooltip-list"></div>
+        <div id="sim-tooltip-list" style="max-height:260px;overflow-y:auto;min-width:280px"></div>
       </div>
     </div>
     <button type="button" class="btn" id="btn-load" onclick="openLoadModal()" style="border-color:var(--purple);color:var(--purple)">⇩ LOAD EXISTING</button>
@@ -430,10 +474,15 @@ input[type=range]{width:100%;height:2px;accent-color:var(--cyan);cursor:pointer}
   <div id="load-modal">
     <div class="ptitle">⇩ LOAD EXISTING SIMULATION RUN</div>
     <div id="load-refresh-spinner"></div>
-    <div id="load-list"><div id="load-empty">FETCHING RUNS...</div></div>
+    <div id="load-modal-body">
+      <div id="load-list-wrap">
+        <div id="load-list"><div id="load-empty">FETCHING RUNS...</div></div>
+      </div>
+    </div>
     <div id="load-modal-btns">
       <button type="button" class="btn" onclick="refreshRunList()">↺ REFRESH</button>
       <button type="button" class="btn" id="btn-load-confirm" onclick="confirmLoad()" disabled style="border-color:var(--cyan);color:var(--cyan)">◈ LOAD SELECTED</button>
+      <button type="button" class="btn" id="btn-delete-run" onclick="deleteSelectedRun()" disabled style="border-color:var(--red);color:var(--red)">✕ DELETE</button>
       <button type="button" class="btn" onclick="closeLoadModal()">✕ CANCEL</button>
     </div>
   </div>
@@ -482,12 +531,213 @@ async function apiGet(path) {
   return r.json();
 }
 
+const _runConfigCache = new Map();
+const _runConfigPending = new Map();
+let _simTooltipPreviewRunId = null;
+let _loadPreviewRunId = null;
+
+const _PARAM_LABELS = {
+  mission_duration_hours: 'Mission Duration',
+  time_step_minutes: 'Time Step',
+  num_astronauts: 'Crew Size',
+  astronaut_id: 'Astronaut ID',
+  sms_rate_per_day: 'SMS Rate',
+  recovery_factor: 'Recovery Factor',
+  fatigue_sensitivity: 'Fatigue Sensitivity',
+  baseline_hr: 'Baseline HR',
+  baseline_sleep_quality: 'Baseline Sleep',
+  initial_fatigue: 'Initial Fatigue',
+  enable_motion_sickness: 'Motion Sickness',
+  enable_sleep_disruption: 'Sleep Disruption',
+  use_biogears: 'BioGears',
+  save_trajectories: 'Save Trajectories',
+  save_events: 'Save Events',
+  biogears_scenario_path: 'BioGears Scenario',
+};
+
+const _PARAM_GROUPS = [
+  { title: 'MISSION', keys: ['mission_duration_hours', 'time_step_minutes', 'num_astronauts', 'astronaut_id'] },
+  { title: 'DYNAMICS', keys: ['sms_rate_per_day', 'recovery_factor', 'fatigue_sensitivity', 'baseline_hr', 'baseline_sleep_quality', 'initial_fatigue'] },
+  { title: 'FEATURE FLAGS', keys: ['enable_motion_sickness', 'enable_sleep_disruption', 'use_biogears'] },
+  { title: 'OUTPUT', keys: ['save_trajectories', 'save_events', 'biogears_scenario_path'] },
+];
+
+function _escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function _isPlainObject(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function _hasConfig(config) {
+  return _isPlainObject(config) && Object.keys(config).length > 0;
+}
+
+function _toNumber(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function _compactNumber(value, digits = 2) {
+  const n = _toNumber(value);
+  if (n === null) return '—';
+  return n.toFixed(digits).replace(/\.0+$/, '').replace(/(\.\d*[1-9])0+$/, '$1');
+}
+
+function _parseLikeDate(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function _truncateText(value, maxLen = 56) {
+  const text = String(value);
+  return text.length > maxLen ? text.slice(0, maxLen - 1) + '…' : text;
+}
+
+function _paramLabel(key) {
+  return _PARAM_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function _formatParamValue(key, value) {
+  if (value === null || value === undefined || value === '') return '—';
+
+  if (typeof value === 'boolean') return value ? 'ON' : 'OFF';
+
+  const n = _toNumber(value);
+  switch (key) {
+    case 'mission_duration_hours': {
+      if (n === null) return String(value);
+      const days = n / 24;
+      return `${_compactNumber(days, days % 1 === 0 ? 0 : 1)} days (${_compactNumber(n, 0)} h)`;
+    }
+    case 'time_step_minutes':
+      return n === null ? String(value) : `${_compactNumber(n, 1)} min`;
+    case 'sms_rate_per_day':
+      return n === null ? String(value) : `${_compactNumber(n, 2)} /day`;
+    case 'recovery_factor':
+    case 'fatigue_sensitivity':
+      return n === null ? String(value) : `${_compactNumber(n, 2)}x`;
+    case 'baseline_hr':
+      return n === null ? String(value) : `${_compactNumber(n, 0)} bpm`;
+    case 'baseline_sleep_quality':
+      return n === null ? String(value) : _compactNumber(n, 2);
+    case 'initial_fatigue':
+      return n === null ? String(value) : _compactNumber(n, 2);
+    default:
+      break;
+  }
+
+  if (Array.isArray(value)) return _truncateText(value.join(', '));
+  if (_isPlainObject(value)) return _truncateText(JSON.stringify(value));
+  return _truncateText(String(value));
+}
+
+function _buildParamSectionHtml(title, keys, config) {
+  const rows = keys
+    .filter(key => Object.prototype.hasOwnProperty.call(config, key))
+    .map(key => {
+      const label = _escapeHtml(_paramLabel(key));
+      const val = _escapeHtml(_formatParamValue(key, config[key]));
+      return `<div class="param-row"><span class="param-key">${label}</span><span class="param-val" title="${val}">${val}</span></div>`;
+    });
+
+  if (!rows.length) return '';
+  return `<div class="param-section"><div class="param-section-title">${_escapeHtml(title)}</div>${rows.join('')}</div>`;
+}
+
+function _renderParamHtml(config, emptyText) {
+  if (!_hasConfig(config)) {
+    return `<div class="param-empty">${_escapeHtml(emptyText || 'PARAMETERS UNAVAILABLE')}</div>`;
+  }
+
+  const used = new Set();
+  let html = _PARAM_GROUPS
+    .map(group => {
+      group.keys.forEach(k => used.add(k));
+      return _buildParamSectionHtml(group.title, group.keys, config);
+    })
+    .filter(Boolean)
+    .join('');
+
+  const extraKeys = Object.keys(config).filter(k => !used.has(k));
+  if (extraKeys.length) {
+    html += _buildParamSectionHtml('OTHER', extraKeys, config);
+  }
+  return html || `<div class="param-empty">${_escapeHtml(emptyText || 'PARAMETERS UNAVAILABLE')}</div>`;
+}
+
+function _setParamPanelContent(contentId, config, emptyText) {
+  const content = document.getElementById(contentId);
+  if (!content) return;
+  content.innerHTML = _renderParamHtml(config, emptyText);
+}
+
+function _cacheRunConfig(runId, config) {
+  if (!runId || !_hasConfig(config)) return;
+  _runConfigCache.set(runId, config);
+}
+
+async function _ensureRunConfig(runId, fallbackConfig = null) {
+  if (!runId) return null;
+  if (_hasConfig(fallbackConfig)) {
+    _cacheRunConfig(runId, fallbackConfig);
+    return fallbackConfig;
+  }
+  if (_runConfigCache.has(runId)) return _runConfigCache.get(runId);
+  if (_runConfigPending.has(runId)) return _runConfigPending.get(runId);
+
+  const req = (async () => {
+    try {
+      const cfg = await apiGet(`/api/simulation/config/${runId}`);
+      if (_hasConfig(cfg)) {
+        _cacheRunConfig(runId, cfg);
+        return cfg;
+      }
+      return null;
+    } catch {
+      return null;
+    } finally {
+      _runConfigPending.delete(runId);
+    }
+  })();
+
+  _runConfigPending.set(runId, req);
+  return req;
+}
+
 async function pollUntilComplete(runId, onProgress) {
   while (true) {
-    const s = await apiGet(`/api/simulation/status/${runId}`);
+    let s;
+    try {
+      s = await apiGet(`/api/simulation/status/${runId}`);
+    } catch (e) {
+      const tracked = _simRuns.get(runId);
+      const isCancelling = tracked && (tracked.status === 'cancelling' || tracked.status === 'cancelled');
+      if (isCancelling && String(e.message || '').includes('404')) {
+        const err = new Error('Simulation cancelled by user');
+        err.code = 'SIM_CANCELLED';
+        throw err;
+      }
+      throw e;
+    }
     onProgress(s.progress || 0, s.status);
     if (s.status === 'completed') return s;
-    if (s.status === 'failed') throw new Error('Simulation failed: ' + (s.error_message || 'unknown'));
+    if (s.status === 'failed') {
+      const msg = s.error_message || 'unknown';
+      if ((msg || '').toLowerCase().includes('manually stopped')) {
+        const err = new Error('Simulation cancelled by user');
+        err.code = 'SIM_CANCELLED';
+        throw err;
+      }
+      throw new Error('Simulation failed: ' + msg);
+    }
     await new Promise(r => setTimeout(r, 800));
   }
 }
@@ -539,23 +789,137 @@ function _simPhaseLabel(pct) {
   return 'LOADING RESULTS';
 }
 
+function _simPhaseColor(status) {
+  if (status === 'done') return 'var(--green)';
+  if (status === 'cancelled' || status === 'cancelling') return 'var(--amber)';
+  if (status === 'err') return 'var(--red)';
+  return 'var(--amber)';
+}
+
+function _simFillClass(status) {
+  if (status === 'done') return 'done';
+  if (status === 'err') return 'err';
+  if (status === 'cancelled' || status === 'cancelling') return 'cancelled';
+  return '';
+}
+
+function _simStatusLabel(run) {
+  if (run.status === 'done') return 'COMPLETE';
+  if (run.status === 'err') return 'ERROR';
+  if (run.status === 'cancelled') return 'CANCELLED';
+  if (run.status === 'cancelling') return 'CANCELLING';
+  return _simPhaseLabel(run.pct);
+}
+
+function _simSubLabel(run) {
+  if (run.status === 'done') return 'RESULTS READY';
+  if (run.status === 'err') return 'FAILED';
+  if (run.status === 'cancelled') return 'STOPPED BY USER';
+  if (run.status === 'cancelling') return 'STOP REQUESTED';
+  if (!run.phase || run.phase === 'RUNNING' || run.phase === 'PENDING') {
+    return _simPhaseLabel(run.pct);
+  }
+  return run.phase || _simPhaseLabel(run.pct);
+}
+
+function _isTrackedRunActive(status) {
+  return status === 'running' || status === 'cancelling';
+}
+
+function _entryId(runId) {
+  return 'sr-' + runId.replace(/[^a-z0-9]/gi, '_');
+}
+
+function _animateEntryOut(el) {
+  if (!el || el.classList.contains('leaving')) return;
+  el.classList.add('leaving');
+  setTimeout(() => el.remove(), 210);
+}
+
+function _schedulePruneRun(runId, delayMs) {
+  setTimeout(() => {
+    const el = document.getElementById(_entryId(runId));
+    if (el) _animateEntryOut(el);
+    setTimeout(() => {
+      _simRuns.delete(runId);
+      _updateRunButton();
+      _renderTooltip();
+      if (_simRuns.size === 0) hideSimTooltip();
+    }, 220);
+  }, delayMs);
+}
+
+function _setTooltipVisible(visible) {
+  const tip = document.getElementById('sim-tooltip');
+  if (!tip) return;
+  tip.classList.toggle('visible', !!visible);
+}
+
+function _setSimTooltipPreviewSub(text) {
+  const sub = document.getElementById('sim-tooltip-param-sub');
+  if (sub) sub.textContent = text || 'Hover a run to preview config';
+}
+
+function _setLoadPreviewSub(text) {
+  const sub = document.getElementById('load-param-sub');
+  if (sub) sub.textContent = text || 'Hover a run to inspect configuration';
+}
+
+async function _showSimRunParams(runId, source = 'hover') {
+  _simTooltipPreviewRunId = runId;
+  const run = _simRuns.get(runId);
+  if (!run) {
+    _setParamPanelContent('sim-tooltip-param-content', null, 'NO RUN SELECTED');
+    _setSimTooltipPreviewSub('Hover a run to preview config');
+    return;
+  }
+
+  _setSimTooltipPreviewSub(`${runId} · ${source === 'selected' ? 'selected' : source}`.toUpperCase());
+  _setParamPanelContent('sim-tooltip-param-content', run.config, 'CONFIG LOADING...');
+
+  const cfg = await _ensureRunConfig(runId, run.config || null);
+  if (_simTooltipPreviewRunId !== runId) return;
+  if (cfg) run.config = cfg;
+  _setParamPanelContent('sim-tooltip-param-content', cfg || run.config, 'PARAMETERS NOT AVAILABLE');
+}
+
+async function _showLoadRunParams(runId, source = 'hover') {
+  _loadPreviewRunId = runId;
+  const run = _getRunById(runId);
+  if (!run) {
+    _setParamPanelContent('load-param-content', null, 'NO RUN SELECTED');
+    _setLoadPreviewSub('Hover a run to inspect configuration');
+    return;
+  }
+
+  _setLoadPreviewSub(`${runId} · ${source === 'selected' ? 'selected' : source}`.toUpperCase());
+  _setParamPanelContent('load-param-content', run.config, 'CONFIG LOADING...');
+
+  const cfg = await _ensureRunConfig(runId, run.config || null);
+  if (_loadPreviewRunId !== runId) return;
+  if (cfg) run.config = cfg;
+  _setParamPanelContent('load-param-content', cfg || run.config, 'PARAMETERS NOT AVAILABLE');
+}
+
 // ── button ℹ overlay management ───────────────────────────────────────────────
 function _updateRunButton() {
-  const icon    = document.getElementById('sim-info-icon');
-  const btn     = document.getElementById('btn-run');
+  const icon = document.getElementById('sim-info-icon');
+  const btn = document.getElementById('btn-run');
   if (!icon || !btn) return;
-  const active = [..._simRuns.values()].filter(r => r.status === 'running').length;
-  if (active > 0) {
-    icon.style.display = 'flex';
-    // Show count in superscript if multiple running
+
+  const active = [..._simRuns.values()].filter(r => _isTrackedRunActive(r.status)).length;
+  const hasTrackedRuns = _simRuns.size > 0;
+
+  if (hasTrackedRuns) {
+    icon.classList.add('visible');
     icon.innerHTML = active > 1
       ? `ℹ<sup style="font-size:6px;vertical-align:super;color:var(--amber)">${active}</sup>`
       : 'ℹ';
-    // Shrink button right-padding so text doesn't overlap the icon
     btn.style.paddingRight = '30px';
   } else {
-    icon.style.display = 'none';
+    icon.classList.remove('visible');
     btn.style.paddingRight = '';
+    hideSimTooltip();
   }
 }
 
@@ -563,30 +927,71 @@ function _updateRunButton() {
 function showSimTooltip() {
   cancelHideSimTooltip();
   _renderTooltip();
-  const tip = document.getElementById('sim-tooltip');
-  if (tip) tip.style.display = 'block';
-  // Tick elapsed every second while open
+  _setTooltipVisible(true);
   clearInterval(_elapsedTimer);
   _elapsedTimer = setInterval(_updateElapsed, 1000);
 }
 
 function hideSimTooltip() {
-  const tip = document.getElementById('sim-tooltip');
-  if (tip) tip.style.display = 'none';
+  _setTooltipVisible(false);
   clearInterval(_elapsedTimer);
 }
 
 function scheduleHideSimTooltip() {
-  _hideTooltipTimer = setTimeout(hideSimTooltip, 180);
+  _hideTooltipTimer = setTimeout(hideSimTooltip, 220);
 }
 
 function cancelHideSimTooltip() {
   clearTimeout(_hideTooltipTimer);
 }
 
-// ── tooltip DOM — build once per sim, then update in-place ───────────────────
-function _entryId(runId) { return 'sr-' + runId.replace(/[^a-z0-9]/gi, '_'); }
+function _updateRunEntry(runId) {
+  const r = _simRuns.get(runId);
+  if (!r) return;
 
+  const eid = _entryId(runId);
+  const entryEl = document.getElementById(eid);
+  const barEl = document.getElementById(`${eid}-bar`);
+  const phaseEl = document.getElementById(`${eid}-phase`);
+  const lblEl = document.getElementById(`${eid}-lbl`);
+  const metaEl = document.getElementById(`${eid}-meta`);
+  const cancelEl = document.getElementById(`${eid}-cancel`);
+  const paramsEl = document.getElementById(`${eid}-params`);
+
+  const phaseText = _simStatusLabel(r);
+  const phaseColor = _simPhaseColor(r.status);
+  const fillCls = _simFillClass(r.status);
+  const elapsed = ((Date.now() - r.startTs) / 1000).toFixed(0);
+
+  if (barEl) {
+    barEl.style.width = r.pct + '%';
+    barEl.className = 'sim-prog-fill ' + fillCls;
+  }
+  if (entryEl) {
+    entryEl.classList.toggle('cancelling', r.status === 'cancelling');
+  }
+  if (phaseEl) {
+    phaseEl.textContent = phaseText;
+    phaseEl.style.color = phaseColor;
+  }
+  if (lblEl) {
+    lblEl.textContent = _simSubLabel(r);
+  }
+  if (metaEl) metaEl.textContent = `${elapsed}s · ${r.pct.toFixed(0)}%`;
+  if (paramsEl && _hasConfig(r.config)) {
+    paramsEl.textContent = _formatRunListParamLine(r.config);
+  }
+
+  if (cancelEl) {
+    const canCancel = r.status === 'running';
+    const cancelling = r.status === 'cancelling';
+    cancelEl.disabled = !(canCancel || cancelling);
+    cancelEl.textContent = cancelling ? '...' : 'CANCEL';
+    cancelEl.style.visibility = (canCancel || cancelling) ? 'visible' : 'hidden';
+  }
+}
+
+// ── tooltip DOM — build once per sim, then update in-place ───────────────────
 function _renderTooltip() {
   const list = document.getElementById('sim-tooltip-list');
   if (!list) return;
@@ -597,68 +1002,59 @@ function _renderTooltip() {
   }
 
   _simRuns.forEach((r, id) => {
-    const eid   = _entryId(id);
-    const short = id.length > 20 ? id.slice(0,9)+'…'+id.slice(-7) : id;
-    const phaseColor = r.status==='done' ? 'var(--green)' : r.status==='err' ? 'var(--red)' : 'var(--amber)';
-    const fillCls    = r.status==='done' ? 'done' : r.status==='err' ? 'err' : '';
-    const elapsed    = ((Date.now() - r.startTs)/1000).toFixed(0);
-    const phase      = r.status==='done' ? 'COMPLETE' : r.status==='err' ? 'ERROR' : _simPhaseLabel(r.pct);
+    const eid = _entryId(id);
+    const short = id.length > 22 ? id.slice(0, 10) + '…' + id.slice(-8) : id;
 
     let entry = document.getElementById(eid);
     if (!entry) {
-      // Create for the first time
       entry = document.createElement('div');
       entry.id = eid;
       entry.className = 'sim-run-entry';
       entry.innerHTML = `
         <div class="sim-run-header">
           <span class="sim-run-id-label" title="${id}">${short}</span>
-          <span class="sim-run-phase-label" id="${eid}-phase" style="color:${phaseColor}">${phase}</span>
+          <div class="sim-run-actions">
+            <button type="button" class="sim-run-action cancel" id="${eid}-cancel" onclick="cancelSimulationRun('${id}', event)">CANCEL</button>
+            <span class="sim-run-phase-label" id="${eid}-phase"></span>
+          </div>
         </div>
         <div class="sim-prog-track">
-          <div class="sim-prog-fill ${fillCls}" id="${eid}-bar" style="width:${r.pct}%"></div>
+          <div class="sim-prog-fill" id="${eid}-bar"></div>
         </div>
-        <div class="sim-run-sub">
-          <span id="${eid}-lbl">${_simPhaseLabel(r.pct)}</span>
-          <span id="${eid}-meta">${elapsed}s · ${r.pct.toFixed(0)}%</span>
-        </div>`;
+        <div style="font-size:7px;color:rgba(0,212,255,.5);letter-spacing:.5px;margin-top:3px;min-height:10px" id="${eid}-params"></div>
+        <div class="sim-run-sub"><span id="${eid}-lbl"></span><span id="${eid}-meta"></span></div>`;
       list.appendChild(entry);
-    } else {
-      // Update in-place — no DOM rebuild, transitions work cleanly
-      const barEl   = document.getElementById(`${eid}-bar`);
-      const phaseEl = document.getElementById(`${eid}-phase`);
-      const lblEl   = document.getElementById(`${eid}-lbl`);
-      const metaEl  = document.getElementById(`${eid}-meta`);
-      if (barEl)   { barEl.style.width = r.pct + '%'; barEl.className = 'sim-prog-fill ' + fillCls; }
-      if (phaseEl) { phaseEl.textContent = phase; phaseEl.style.color = phaseColor; }
-      if (lblEl)   { lblEl.textContent = _simPhaseLabel(r.pct); }
-      if (metaEl)  { metaEl.textContent = `${elapsed}s · ${r.pct.toFixed(0)}%`; }
     }
+
+    if (!_hasConfig(r.config)) {
+      _ensureRunConfig(id).then(cfg => {
+        if (cfg) {
+          const updated = _simRuns.get(id);
+          if (updated) updated.config = cfg;
+          _updateRunEntry(id);
+        }
+      });
+    }
+
+    _updateRunEntry(id);
   });
 
-  // Remove entries for runs that have been pruned from the map
   list.querySelectorAll('.sim-run-entry').forEach(el => {
-    if (!_simRuns.has(el.id.slice(3).replace(/_/g, '-')) &&
-        !([..._simRuns.keys()].some(k => _entryId(k) === el.id))) {
-      el.remove();
-    }
+    const stillTracked = [..._simRuns.keys()].some(k => _entryId(k) === el.id);
+    if (!stillTracked) _animateEntryOut(el);
   });
 }
 
 function _updateElapsed() {
-  // Only update elapsed+pct text fields — avoids full re-render while open
   const tip = document.getElementById('sim-tooltip');
-  if (!tip || tip.style.display === 'none') return;
-  _simRuns.forEach((r, id) => {
-    const eid    = _entryId(id);
-    const metaEl = document.getElementById(`${eid}-meta`);
-    if (metaEl) metaEl.textContent = `${((Date.now()-r.startTs)/1000).toFixed(0)}s · ${r.pct.toFixed(0)}%`;
-  });
+  if (!tip || !tip.classList.contains('visible')) return;
+  _simRuns.forEach((_, id) => _updateRunEntry(id));
 }
 
 // ── lifecycle ─────────────────────────────────────────────────────────────────
 function _simTrackAdd(runId) {
-  _simRuns.set(runId, { pct: 0, phase: 'STARTING', startTs: Date.now(), status: 'running' });
+  _simRuns.set(runId, { pct: 0, phase: 'STARTING', startTs: Date.now(), status: 'running', config: null });
+  _simTooltipPreviewRunId = runId;
   _updateRunButton();
   _renderTooltip();
 }
@@ -666,49 +1062,78 @@ function _simTrackAdd(runId) {
 function _simTrackUpdate(runId, pct, phase) {
   const r = _simRuns.get(runId);
   if (!r) return;
-  r.pct = pct; r.phase = phase; r.status = 'running';
-  // Always update bars, even if tooltip is hidden
-  const eid  = _entryId(runId);
-  const barEl = document.getElementById(`${eid}-bar`);
-  if (barEl) barEl.style.width = pct + '%';
-  const metaEl = document.getElementById(`${eid}-meta`);
-  if (metaEl) metaEl.textContent = `${((Date.now()-r.startTs)/1000).toFixed(0)}s · ${pct.toFixed(0)}%`;
-  const lblEl  = document.getElementById(`${eid}-lbl`);
-  if (lblEl)  lblEl.textContent = _simPhaseLabel(pct);
-  const phaseEl = document.getElementById(`${eid}-phase`);
-  if (phaseEl) phaseEl.textContent = _simPhaseLabel(pct);
+  r.pct = Math.max(0, Math.min(100, +pct || 0));
+  if (phase) r.phase = String(phase).toUpperCase();
+  if (r.status !== 'cancelling') r.status = 'running';
+  _updateRunEntry(runId);
+  _updateRunButton();
 }
 
 function _simTrackDone(runId) {
   const r = _simRuns.get(runId);
   if (!r) return;
-  r.pct = 100; r.status = 'done';
-  _renderTooltip();
+  r.pct = 100;
+  r.status = 'done';
+  _updateRunEntry(runId);
   _updateRunButton();
-  setTimeout(() => {
-    // Remove tooltip row then prune map
-    const el = document.getElementById(_entryId(runId));
-    if (el) el.remove();
-    _simRuns.delete(runId);
-    _updateRunButton();
-  }, 6000);
+  _schedulePruneRun(runId, 5500);
 }
 
 function _simTrackError(runId, msg) {
   const r = _simRuns.get(runId);
   if (!r) return;
-  r.pct = 0; r.status = 'err'; r.phase = msg.slice(0, 50);
-  _renderTooltip();
+  r.status = 'err';
+  r.phase = (msg || 'Error').slice(0, 50).toUpperCase();
+  _updateRunEntry(runId);
   _updateRunButton();
-  setTimeout(() => {
-    const el = document.getElementById(_entryId(runId));
-    if (el) el.remove();
-    _simRuns.delete(runId);
-    _updateRunButton();
-  }, 8000);
+  _schedulePruneRun(runId, 7000);
 }
 
-async function startSimulation() {
+function _simTrackCancelling(runId) {
+  const r = _simRuns.get(runId);
+  if (!r) return;
+  r.status = 'cancelling';
+  r.phase = 'STOP REQUESTED';
+  _updateRunEntry(runId);
+  _updateRunButton();
+}
+
+function _simTrackCancelled(runId) {
+  const r = _simRuns.get(runId);
+  if (!r) return;
+  r.status = 'cancelled';
+  r.phase = 'STOPPED BY USER';
+  _updateRunEntry(runId);
+  _updateRunButton();
+  _schedulePruneRun(runId, 4500);
+}
+
+async function cancelSimulationRun(runId, evt) {
+  if (evt && typeof evt.stopPropagation === 'function') evt.stopPropagation();
+  const r = _simRuns.get(runId);
+  if (!r || r.status !== 'running') return;
+  if (!confirm(`Cancel simulation "${runId}"?`)) return;
+
+  _simTrackCancelling(runId);
+  setApiStatus('busy', `Cancelling ${runId}...`, r.pct, runId);
+
+  try {
+    const res = await fetch(API_BASE + `/api/simulation/stop/${runId}`, { method: 'POST' });
+    if (!res.ok && res.status !== 404) {
+      throw new Error(`POST /api/simulation/stop/${runId} → ${res.status}`);
+    }
+  } catch (e) {
+    r.status = 'running';
+    r.phase = 'RESUMED';
+    _updateRunEntry(runId);
+    _updateRunButton();
+    setApiStatus('err', 'Cancel failed: ' + e.message, r.pct, runId);
+    alert('Cancel failed: ' + e.message);
+  }
+}
+
+async function startSimulation(evt) {
+  if (evt && typeof evt.preventDefault === 'function') evt.preventDefault();
   setApiStatus('busy', 'Submitting simulation to server...', 0);
 
   const cfg = {
@@ -732,6 +1157,10 @@ async function startSimulation() {
     const resp = await apiPost('/api/simulation/run', cfg);
     runId = resp.run_id;
     _simTrackAdd(runId);
+    _cacheRunConfig(runId, cfg);
+    const trackedRun = _simRuns.get(runId);
+    if (trackedRun) trackedRun.config = cfg;
+    _showSimRunParams(runId, 'selected');
 
     document.getElementById('bg-cyc').textContent = runId;
     document.getElementById('api-run-id').textContent = runId;
@@ -751,7 +1180,7 @@ async function startSimulation() {
     _simTrackDone(runId);
     setApiStatus('', `Results loaded — ${simResults.state.time.length} timesteps`, 100, runId);
 
-    document.getElementById('btn-play').disabled  = false;
+    document.getElementById('btn-play').disabled = false;
     document.getElementById('btn-reset').disabled = false;
 
     onSimReady();
@@ -759,7 +1188,12 @@ async function startSimulation() {
     populateStatusPanel();
     checkHealth();
 
-  } catch(e) {
+  } catch (e) {
+    if (runId && e && e.code === 'SIM_CANCELLED') {
+      _simTrackCancelled(runId);
+      setApiStatus('', `Simulation cancelled — ${runId}`, 0, runId);
+      return;
+    }
     if (runId) _simTrackError(runId, e.message);
     setApiStatus('err', 'Error: ' + e.message, 0);
     console.error(e);
@@ -1462,7 +1896,7 @@ function initThree() {
   const cv = document.getElementById('three-canvas');
   const tw = document.getElementById('panel-twin');
   const W = Math.min(tw.clientWidth - 22, 520);
-  const H = Math.round(W * 0.62);
+  const H = Math.round(W * 0.7);
   cv.width = W; cv.height = H;
 
   renderer3 = new THREE.WebGLRenderer({ canvas: cv, antialias: true });
@@ -2343,10 +2777,60 @@ sliders.forEach(([id,lid,fmt])=>{
 let selectedRunId = null;
 let allRuns = [];
 
+function _normalizeRunStatus(status) {
+  const s = String(status || 'completed').toLowerCase();
+  if (s === 'pending' || s === 'running' || s === 'completed' || s === 'failed') return s;
+  if (s === 'queued' || s === 'started') return 'running';
+  return 'completed';
+}
+
+function _formatRunListParamLine(cfg) {
+  if (!_hasConfig(cfg)) return '—';
+  const days = cfg.mission_duration_hours !== undefined
+    ? `${_compactNumber((Number(cfg.mission_duration_hours) || 0) / 24, 0)}d`
+    : null;
+  const dt = cfg.time_step_minutes !== undefined
+    ? `${_compactNumber(cfg.time_step_minutes, 0)}m step`
+    : null;
+  const sms = cfg.sms_rate_per_day !== undefined
+    ? `${_compactNumber(cfg.sms_rate_per_day, 2)} sms`
+    : null;
+  const rec = cfg.recovery_factor !== undefined
+    ? `${_compactNumber(cfg.recovery_factor, 1)} rf`
+    : null;
+  const fs = cfg.fatigue_sensitivity !== undefined
+    ? `${_compactNumber(cfg.fatigue_sensitivity, 1)} fs`
+    : null;
+  return [days, dt, sms, rec, fs].filter(Boolean).join(' · ') || '—';
+}
+
+function _getRunById(runId) {
+  return allRuns.find(r => r.run_id === runId) || null;
+}
+
+function _setLoadModalSelectionState(run) {
+  const loadBtn = document.getElementById('btn-load-confirm');
+  const delBtn  = document.getElementById('btn-delete-run');
+  if (!loadBtn || !delBtn) return;
+  if (!run) {
+    loadBtn.disabled = true;
+    loadBtn.textContent = '◈ LOAD SELECTED';
+    delBtn.disabled = true;
+    delBtn.textContent = '✕ DELETE';
+    return;
+  }
+  const canLoad = run.status === 'completed';
+  loadBtn.disabled = !canLoad;
+  loadBtn.textContent = canLoad ? '◈ LOAD SELECTED' : '◈ LOAD (COMPLETED ONLY)';
+  delBtn.disabled = false;
+  delBtn.textContent = '✕ DELETE';
+}
+
 async function openLoadModal() {
   document.getElementById('load-overlay').classList.add('open');
   selectedRunId = null;
-  document.getElementById('btn-load-confirm').disabled = true;
+  _loadPreviewRunId = null;
+  _setLoadModalSelectionState(null);
   await refreshRunList();
 }
 
@@ -2360,6 +2844,9 @@ async function refreshRunList() {
   const list    = document.getElementById('load-list');
   spinner.textContent = '◌ FETCHING RUNS...';
   list.innerHTML = '';
+  selectedRunId = null;
+  _loadPreviewRunId = null;
+  _setLoadModalSelectionState(null);
 
   try {
     let runs = [];
@@ -2376,48 +2863,87 @@ async function refreshRunList() {
       }
     }
 
-    // Filter to completed only — failed runs have no results to load
-    const completedRuns = runs.filter(r => (r.status || 'completed') === 'completed');
-    allRuns = completedRuns;
-    spinner.textContent = `${completedRuns.length} completed run${completedRuns.length!==1?'s':''} found`;
+    allRuns = (runs || []).map(run => {
+      if (typeof run === 'string') {
+        return {
+          run_id: run,
+          status: 'completed',
+          config: {},
+          created_at: run,
+        };
+      }
+      const runId = run.run_id || run.id;
+      if (!runId) return null;
+      return {
+        run_id: runId,
+        status: _normalizeRunStatus(run.status),
+        config: run.config || {},
+        created_at: run.created_at || run.started_at || run.completed_at || runId,
+      };
+    }).filter(Boolean);
 
-    if (!completedRuns.length) {
-      list.innerHTML = '<div id="load-empty">NO COMPLETED RUNS FOUND</div>';
+    allRuns.forEach(run => _cacheRunConfig(run.run_id, run.config));
+
+    const counts = { pending: 0, running: 0, completed: 0, failed: 0 };
+    allRuns.forEach(r => {
+      counts[r.status] = (counts[r.status] || 0) + 1;
+    });
+
+    spinner.textContent = `${allRuns.length} runs • ${counts.running || 0} running • ${counts.completed || 0} completed`;
+
+    if (!allRuns.length) {
+      list.innerHTML = '<div id="load-empty">NO RUNS FOUND</div>';
       return;
     }
 
-    completedRuns.sort((a,b) => {
+    allRuns.sort((a,b) => {
+      const da = _parseLikeDate(a.created_at);
+      const db = _parseLikeDate(b.created_at);
+      if (da && db) return db.getTime() - da.getTime();
       const ta = a.created_at || a.run_id || '';
       const tb = b.created_at || b.run_id || '';
-      return tb.localeCompare(ta);
+      return String(tb).localeCompare(String(ta));
     });
 
-    completedRuns.forEach(run => {
-      const id  = run.run_id || run.id || run;
+    const preloadTasks = [];
+    allRuns.forEach(run => {
+      const id  = run.run_id;
       const cfg = run.config || {};
+      const status = _normalizeRunStatus(run.status);
+      const params = _formatRunListParamLine(cfg);
 
-      // Build params line from whatever config fields exist
-      const days  = cfg.mission_duration_hours ? `${Math.round(cfg.mission_duration_hours/24)}d` : null;
-      const sms   = cfg.sms_rate_per_day       ? `λ ${cfg.sms_rate_per_day.toFixed(2)}/day`      : null;
-      const rec   = cfg.recovery_factor        ? `rec ${cfg.recovery_factor.toFixed(1)}×`         : null;
-      const fsens = cfg.fatigue_sensitivity    ? `sens ${cfg.fatigue_sensitivity.toFixed(1)}×`     : null;
-      const params = [days, sms, rec, fsens].filter(Boolean).join('  ·  ');
+      if (!_hasConfig(cfg)) {
+        preloadTasks.push(_ensureRunConfig(id).then(fullCfg => {
+          if (!fullCfg) return;
+          run.config = fullCfg;
+          const row = list.querySelector(`.run-item[data-run-id="${id}"]`);
+          if (!row) return;
+          const summary = row.querySelector('[data-role="run-summary"]');
+          if (summary) summary.textContent = _formatRunListParamLine(fullCfg);
+        }));
+      }
 
       const ts = run.created_at ? new Date(run.created_at).toLocaleString() : '';
+      const statusLabel = status.toUpperCase();
 
       const div = document.createElement('div');
       div.className = 'run-item';
       div.dataset.runId = id;
+      div.dataset.status = status;
       div.innerHTML = `
         <div style="flex:1;min-width:0">
           <div class="run-id">${id}</div>
-          <div style="font-size:9px;color:var(--cyan);letter-spacing:1px;margin-top:2px">${params || '—'}</div>
-          ${ts ? `<div class="run-meta" style="margin-top:1px">${ts}</div>` : ''}
+          <div style="font-size:8px;color:rgba(0,212,255,.6);letter-spacing:.5px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" data-role="run-summary">${params || '—'}</div>
+          <div class="run-meta" style="margin-top:2px;color:rgba(120,168,200,.45)">${ts || '—'}${status !== 'completed' ? ' · unavailable' : ''}</div>
         </div>
-        <span class="run-badge completed">COMPLETED</span>`;
+        <span class="run-badge ${status}">${statusLabel}</span>`;
       div.onclick = () => selectRun(id, div);
       list.appendChild(div);
     });
+
+    if (preloadTasks.length) {
+      Promise.allSettled(preloadTasks);
+    }
 
   } catch(e) {
     spinner.textContent = '';
@@ -2429,69 +2955,119 @@ function selectRun(id, el) {
   document.querySelectorAll('.run-item').forEach(r => r.classList.remove('selected'));
   el.classList.add('selected');
   selectedRunId = id;
-  document.getElementById('btn-load-confirm').disabled = false;
-  document.getElementById('btn-delete-run').disabled = false;
+  const run = _getRunById(id);
+  _setLoadModalSelectionState(run);
 }
 
 async function deleteSelectedRun() {
   if (!selectedRunId) return;
-  if (!confirm(`Delete run "${selectedRunId}"? This cannot be undone.`)) return;
+  const run = _getRunById(selectedRunId);
+  const isActive = run && (run.status === 'running' || run.status === 'pending');
+  const q = isActive
+    ? `Run "${selectedRunId}" is ${run.status.toUpperCase()}. It will be cancelled before delete. Continue?`
+    : `Delete run "${selectedRunId}"? This cannot be undone.`;
+  if (!confirm(q)) return;
+
   const btn = document.getElementById('btn-delete-run');
+  const loadBtn = document.getElementById('btn-load-confirm');
   btn.disabled = true;
+  if (loadBtn) loadBtn.disabled = true;
   btn.textContent = '⟳ DELETING...';
+
   try {
-    // Try both endpoint patterns
-    let ok = false;
-    for (const path of [`/api/simulation/${selectedRunId}`, `/api/data/runs/${selectedRunId}`]) {
-      try {
-        const r = await fetch(API_BASE + path, { method: 'DELETE' });
-        if (r.ok) { ok = true; break; }
-      } catch {}
+    if (isActive) {
+      const tracked = _simRuns.get(selectedRunId);
+      if (tracked) _simTrackCancelling(selectedRunId);
+      const stopRes = await fetch(API_BASE + `/api/simulation/stop/${selectedRunId}`, { method: 'POST' });
+      if (!stopRes.ok && stopRes.status !== 404) {
+        throw new Error(`POST /api/simulation/stop/${selectedRunId} → ${stopRes.status}`);
+      }
+      await new Promise(r => setTimeout(r, 250));
     }
-    if (!ok) throw new Error('Server returned an error — run may not have a delete endpoint yet');
+
+    const delRes = await fetch(API_BASE + `/api/simulation/delete/${selectedRunId}`, { method: 'DELETE' });
+    if (!delRes.ok) {
+      throw new Error(`DELETE /api/simulation/delete/${selectedRunId} → ${delRes.status}`);
+    }
+
+    if (_simRuns.has(selectedRunId)) _simTrackCancelled(selectedRunId);
+
     selectedRunId = null;
-    document.getElementById('btn-load-confirm').disabled = true;
-    btn.disabled = true;
-    btn.textContent = '✕ DELETE';
+    _setLoadModalSelectionState(null);
+    setApiStatus('', `Deleted run ${run ? run.run_id : ''}`.trim(), 0);
     await refreshRunList();
   } catch(e) {
     alert('Delete failed: ' + e.message);
-    btn.disabled = false;
+    _setLoadModalSelectionState(run);
     btn.textContent = '✕ DELETE';
   }
 }
 
 // Sync mission control sliders to the config a run was originally run with
 function syncControlsToConfig(cfg) {
-  if (!cfg) return;
-  // Mission duration — always present
-  if (cfg.mission_duration_hours) {
-    const days = Math.round(cfg.mission_duration_hours / 24);
-    const el = document.getElementById('ctrl-cyc');
-    if (el) { el.value = days; document.getElementById('lbl-cyc').textContent = days + ' days'; }
-  }
-  // SMS rate — present on runs started after the slider was added
-  if (cfg.sms_rate_per_day !== undefined) {
-    const raw = Math.round(cfg.sms_rate_per_day * 10);
-    const el = document.getElementById('ctrl-lam');
-    if (el) { el.value = raw; document.getElementById('lbl-lam').textContent = (raw/10).toFixed(2) + '/day'; }
-  }
-  // Recovery factor
-  if (cfg.recovery_factor !== undefined) {
-    const raw = Math.round(cfg.recovery_factor * 10);
-    const el = document.getElementById('ctrl-rec');
-    if (el) { el.value = raw; document.getElementById('lbl-rec').textContent = (raw/10).toFixed(1) + '×'; }
-  }
-  // Fatigue sensitivity
-  if (cfg.fatigue_sensitivity !== undefined) {
-    const raw = Math.round(cfg.fatigue_sensitivity * 10);
-    const el = document.getElementById('ctrl-fsens');
-    if (el) { el.value = raw; document.getElementById('lbl-fsens').textContent = (raw/10).toFixed(1) + '×'; }
-  }
+  if (!_hasConfig(cfg)) return;
+
+  const mappings = [
+    {
+      ctrlId: 'ctrl-cyc',
+      labelId: 'lbl-cyc',
+      key: 'mission_duration_hours',
+      toRaw: v => Math.round((Number(v) || 0) / 24),
+      min: 1,
+      max: 90,
+      fmt: v => `${v} days`,
+    },
+    {
+      ctrlId: 'ctrl-lam',
+      labelId: 'lbl-lam',
+      key: 'sms_rate_per_day',
+      toRaw: v => Math.round((Number(v) || 0) * 10),
+      min: 1,
+      max: 20,
+      fmt: v => (Number(v) / 10).toFixed(2) + '/day',
+    },
+    {
+      ctrlId: 'ctrl-rec',
+      labelId: 'lbl-rec',
+      key: 'recovery_factor',
+      toRaw: v => Math.round((Number(v) || 0) * 10),
+      min: 5,
+      max: 20,
+      fmt: v => (Number(v) / 10).toFixed(1) + 'x',
+    },
+    {
+      ctrlId: 'ctrl-fsens',
+      labelId: 'lbl-fsens',
+      key: 'fatigue_sensitivity',
+      toRaw: v => Math.round((Number(v) || 0) * 10),
+      min: 5,
+      max: 20,
+      fmt: v => (Number(v) / 10).toFixed(1) + 'x',
+    },
+  ];
+
+  mappings.forEach(map => {
+    if (!Object.prototype.hasOwnProperty.call(cfg, map.key)) return;
+    const ctrl = document.getElementById(map.ctrlId);
+    const lbl = document.getElementById(map.labelId);
+    if (!ctrl || !lbl) return;
+
+    let raw = map.toRaw(cfg[map.key]);
+    if (!Number.isFinite(raw)) return;
+    raw = Math.max(map.min, Math.min(map.max, raw));
+
+    ctrl.value = String(raw);
+    lbl.textContent = map.fmt(raw);
+  });
 }
 
 async function confirmLoad() {
   if (!selectedRunId) return;
+  const selectedRun = _getRunById(selectedRunId);
+  if (selectedRun && selectedRun.status !== 'completed') {
+    alert(`Run ${selectedRunId} is ${selectedRun.status.toUpperCase()}. Only completed runs can be loaded.`);
+    return;
+  }
   document.getElementById('load-overlay').classList.remove('open');
 
   setApiStatus('busy', `Loading run ${selectedRunId}...`, 10, selectedRunId);
@@ -2516,8 +3092,15 @@ async function confirmLoad() {
     ]);
     const runCfg = cfgResult.status === 'fulfilled' ? cfgResult.value : null;
 
+    if (_hasConfig(runCfg)) {
+      _cacheRunConfig(currentRunId, runCfg);
+      const listRun = _getRunById(currentRunId);
+      if (listRun) listRun.config = runCfg;
+    }
+
     // Sync sliders — will silently skip any field the old run didn't store
-    syncControlsToConfig(runCfg);
+    const cfgToSync = _hasConfig(runCfg) ? runCfg : (_getRunById(currentRunId)?.config || _runConfigCache.get(currentRunId) || null);
+    syncControlsToConfig(cfgToSync);
 
     // Reset vitals so stale values from previous run don't show
     setVital('hr','—',''); setVital('fat','—',''); setVital('str','—',''); setVital('spo2','—','');
