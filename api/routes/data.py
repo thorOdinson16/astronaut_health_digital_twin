@@ -234,8 +234,7 @@ async def get_simulation_summary(
 
     summary = {
         "run_id": run_id,
-        "duration_hours": float(state['time'][-1]) if state['time'] else 0,
-        "metrics": {
+        "duration_hours": float(state['time'][-1]) / 60.0 if state['time'] else 0,        "metrics": {
             "heart_rate": {
                 "mean":        float(np.mean(state['hr'])),
                 "min":         float(np.min(state['hr'])),

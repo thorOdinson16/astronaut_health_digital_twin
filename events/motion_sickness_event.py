@@ -43,6 +43,7 @@ logger = logging.getLogger(__name__)
 # PARAMETERS
 # =============================================================================
 
+
 @dataclass
 class MotionSicknessParameters:
     """
@@ -50,15 +51,16 @@ class MotionSicknessParameters:
     Onset probability is now supplied by the physics engine;
     these parameters govern the severity and duration sampling.
     """
+
     # Severity (Beta distribution — right-skewed, most episodes mild-moderate)
     severity_alpha: float = 2.0
-    severity_beta:  float = 3.0
-    min_severity:   float = 0.15
-    max_severity:   float = 1.0
+    severity_beta: float = 3.0
+    min_severity: float = 0.15
+    max_severity: float = 1.0
 
     # Duration scales with severity (nonlinear)
-    min_duration:   float = 0.5    # hours
-    max_duration:   float = 4.0    # hours
+    min_duration: float = 0.5  # hours
+    max_duration: float = 4.0  # hours
     duration_exponent: float = 1.5  # duration ∝ severity^exponent
 
     # Severity amplification from slow adaptation (k_suppress ∈ [0,1])
@@ -66,7 +68,7 @@ class MotionSicknessParameters:
     severity_k_suppress_gain: float = 0.50
 
     # Physiological effects per unit severity
-    hr_increase_per_severity:    float = 15.0   # bpm
+    hr_increase_per_severity: float = 15.0  # bpm
     stress_increase_per_severity: float = 0.30
     sleep_degradation_per_severity: float = 0.20
 
@@ -80,6 +82,7 @@ class MotionSicknessParameters:
 # =============================================================================
 # MOTION SICKNESS EVENT
 # =============================================================================
+
 
 class MotionSicknessEvent(Event):
     """
@@ -102,7 +105,7 @@ class MotionSicknessEvent(Event):
         self.params = params or MotionSicknessParameters()
         self.params.validate()
         # Tracks ongoing adaptation state for analysis
-        self.last_k_adapt:   float = 0.18
+        self.last_k_adapt: float = 0.18
         self.last_k_suppress: float = 0.0
 
     # ------------------------------------------------------------------
@@ -110,13 +113,13 @@ class MotionSicknessEvent(Event):
     # ------------------------------------------------------------------
     def sample_onset(
         self,
-        state:          Any,
-        t:              int,
+        state: Any,
+        t: int,
         # Physics engine outputs passed in from simulation loop:
-        p_ms_step:      float = 0.0,    # P(onset this step) from VestibularMismatchModel
-        k_suppress:     float = 0.0,    # adaptation suppression fraction [0,1]
-        k_adapt:        float = 0.18,   # current adaptation rate
-        fatigue_multiplier: float = 1.0, # legacy kwarg, kept for API compat
+        p_ms_step: float = 0.0,  # P(onset this step) from VestibularMismatchModel
+        k_suppress: float = 0.0,  # adaptation suppression fraction [0,1]
+        k_adapt: float = 0.18,  # current adaptation rate
+        fatigue_multiplier: float = 1.0,  # legacy kwarg, kept for API compat
         **kwargs,
     ) -> Tuple[bool, Optional[float]]:
         """
@@ -133,7 +136,7 @@ class MotionSicknessEvent(Event):
         Returns:
             (should_occur, severity_if_occurs)
         """
-        self.last_k_adapt    = k_adapt
+        self.last_k_adapt = k_adapt
         self.last_k_suppress = k_suppress
 
         # Stochastic gate on ODE-derived probability
@@ -144,8 +147,9 @@ class MotionSicknessEvent(Event):
 
         # ── Sample severity ────────────────────────────────────────────
         # Base severity from right-skewed Beta (mostly mild–moderate)
-        base_sev = float(np.random.beta(self.params.severity_alpha,
-                                         self.params.severity_beta))
+        base_sev = float(
+            np.random.beta(self.params.severity_alpha, self.params.severity_beta)
+        )
 
         # Amplify by adaptation suppression: slow adapters have worse episodes
         # Because ê is farther from s(t), the vestibular conflict is larger.
@@ -164,11 +168,14 @@ class MotionSicknessEvent(Event):
     # ------------------------------------------------------------------
     def get_duration(self, severity: float, **kwargs) -> float:
         span = self.params.max_duration - self.params.min_duration
-        return float(np.clip(
-            self.params.min_duration + span * (severity ** self.params.duration_exponent),
-            self.params.min_duration,
-            self.params.max_duration,
-        ))
+        return float(
+            np.clip(
+                self.params.min_duration
+                + span * (severity**self.params.duration_exponent),
+                self.params.min_duration,
+                self.params.max_duration,
+            )
+        )
 
     # ------------------------------------------------------------------
     # Physiological effects
@@ -180,48 +187,66 @@ class MotionSicknessEvent(Event):
         HR delta is additionally informed by vestibulo-cardiac reflex
         (hr_delta from PhysicsEngine is additive).
         """
-        hr_delta    = self.params.hr_increase_per_severity * severity
+        hr_delta = self.params.hr_increase_per_severity * severity
         stress_delta = self.params.stress_increase_per_severity * severity
-        sleep_delta  = self.params.sleep_degradation_per_severity * severity
+        sleep_delta = self.params.sleep_degradation_per_severity * severity
+
+        self.metadata.update(
+            {
+                "severity": severity,
+                "k_suppress": self.last_k_suppress,
+                "k_adapt": self.last_k_adapt,
+                "hr_delta": hr_delta,
+                "stress_delta": stress_delta,
+                "sleep_delta": sleep_delta,
+            }
+        )
 
         return EventEffect(
-            hr_delta=hr_delta,
-            stress_delta=stress_delta,
-            sleep_quality_delta=-sleep_delta,   # negative: degradation
-            motion_severity=severity * 5.0,     # map [0,1] → [0,5] scale
-            metadata={
-                "severity":      severity,
-                "k_suppress":    self.last_k_suppress,
-                "k_adapt":       self.last_k_adapt,
-                "hr_delta":      hr_delta,
-                "stress_delta":  stress_delta,
-                "sleep_delta":   sleep_delta,
+            immediate={
+                "hr_delta": hr_delta,
+                "stress_delta": stress_delta,
+                "sleep_quality_delta": -sleep_delta,
+                "motion_severity": severity * 5.0,
             },
+            duration_hours=float(self.duration or 0.0),
         )
 
     def apply_effect(self, state: Any, t: int, dt_hours: float) -> Dict[str, Any]:
         """Apply ongoing event effects to state at timestep t."""
-        if not hasattr(self, "_severity") or self._severity is None:
+        if getattr(self, "severity", None) is None:
             return {}
 
-        effect = self._create_effect(self._severity)
+        effect = self.effect or self._create_effect(float(self.severity))
+        immediate = effect.immediate if effect else {}
+        hr_delta = float(immediate.get("hr_delta", 0.0))
+        stress_delta = float(immediate.get("stress_delta", 0.0))
+        sleep_quality_delta = float(immediate.get("sleep_quality_delta", 0.0))
+        motion_severity = float(immediate.get("motion_severity", 0.0))
 
         # HR: clamp to physiological bounds
-        new_hr = float(np.clip(state.hr[t] + effect.hr_delta * dt_hours, 40, 200))
+        new_hr = float(np.clip(state.hr[t] + hr_delta * dt_hours, 40, 200))
         # Stress: additive, clamped
-        new_stress = float(np.clip(state.stress[t] + effect.stress_delta * dt_hours, 0, 0.95))
+        new_stress = float(np.clip(state.stress[t] + stress_delta * dt_hours, 0, 0.95))
         # Sleep quality: degradation
-        new_sleep = float(np.clip(state.sleep_quality[t] + effect.sleep_quality_delta * dt_hours, 0.05, 1.0))
+        new_sleep = float(
+            np.clip(state.sleep_quality[t] + sleep_quality_delta * dt_hours, 0.05, 1.0)
+        )
         # Motion severity
-        new_ms = float(np.clip(effect.motion_severity, 0.0, 5.0))
+        new_ms = float(np.clip(motion_severity, 0.0, 5.0))
 
-        state.update(t, hr=new_hr, stress=new_stress,
-                     sleep_quality=new_sleep, motion_severity=new_ms)
+        state.update(
+            t,
+            hr=new_hr,
+            stress=new_stress,
+            sleep_quality=new_sleep,
+            motion_severity=new_ms,
+        )
 
         return {
-            "type":         "motion_sickness_effect",
-            "severity":     self._severity,
-            "hr_applied":   new_hr,
+            "type": "motion_sickness_effect",
+            "severity": float(self.severity),
+            "hr_applied": new_hr,
             "stress_applied": new_stress,
         }
 
@@ -236,7 +261,7 @@ class MotionSicknessEvent(Event):
         for event in reversed(state.event_log):
             if event["type"] == "motion_sickness":
                 event_time = event.get("simulation_time", 0)
-                time_since = current_time - (event_time / 60.0)   # convert min→h
+                time_since = current_time - (event_time / 60.0)  # convert min→h
                 if time_since < refractory_window:
                     return time_since / refractory_window
         return 1.0

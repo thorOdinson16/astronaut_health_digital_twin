@@ -141,7 +141,7 @@ def find_risk_windows(
 
     # Boolean risk flags
     fat_risk = fat > th["fatigue_moderate"]
-    slp_risk = slp < th["sleep_poor"]
+    slp_risk = (slp < th["sleep_poor"]) & (slp > 0.05)
     sts_risk = sts > th["stress_high"]
     ms_risk  = ms  > th["ms_moderate"]
 
@@ -197,7 +197,9 @@ def _classify_window(
     slp_seg: np.ndarray,
     th: Dict[str, float],
 ) -> str:
-    if fat_seg.max() > th["fatigue_critical"] or slp_seg.min() < th["sleep_critical"]:
+    meaningful_sleep = slp_seg[slp_seg > 0.05]
+    sleep_min = float(meaningful_sleep.min()) if len(meaningful_sleep) > 0 else 1.0
+    if fat_seg.max() > th["fatigue_critical"] or sleep_min < th["sleep_critical"]:
         return "CRITICAL"
     if fat_seg.max() > th["fatigue_severe"]:
         return "HIGH"
