@@ -3,6 +3,11 @@ Simulation API Routes - Person 1's Core Interface
 Handles simulation lifecycle: start, stop, status, and configuration.
 These endpoints are called by Person 3's visualization dashboard.
 """
+"""
+Simulation API Routes - Person 1's Core Interface
+Handles simulation lifecycle: start, stop, status, and configuration.
+These endpoints are called by Person 3's visualization dashboard.
+"""
 
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, Query
 from fastapi.responses import JSONResponse
@@ -13,28 +18,38 @@ import uuid
 import asyncio
 import logging
 import numpy as np
+import math
+from datetime import datetime
 
 from core.state_manager import AstronautState
 from core.probabilistic_models import ProbabilisticModels
-from core.fatigue_model import FatigueModel, FatigueParameters
-from core.coupling_engine import CouplingEngine, CouplingParameters
+from core.fatigue_model import (
+    FatigueModel, 
+    FatigueParameters,
+    PhysicsEngine,           # ← ADDED
+    BorbelyParameters,       # ← ADDED
+    VestibularParameters,    # ← ADDED
+)
+from core.coupling_engine import (
+    CouplingEngine, 
+    CouplingParameters,
+    CouplingDiagnostics,     # ← ADDED
+)
 from events.event_scheduler import EventScheduler
 from events.motion_sickness_event import MotionSicknessEvent, MotionSicknessParameters
 from events.sleep_disruption_event import SleepDisruptionEvent, SleepDisruptionParameters
 from biogears.biogears_adapter import BioGearsAdapter
 from utils.logger import get_logger
 from api.dependencies import get_simulation_manager, SimulationManager
-from analytics.risk_engine  import compute_full_risk_report
+from analytics.risk_engine import compute_full_risk_report
 from analytics.trend_analysis import compute_full_trend_report
-from pydantic import BaseModel, Field
 from analytics.monte_carlo import run_monte_carlo
-from core.probabilistic_models import ProbabilisticModels as PM 
+from core.probabilistic_models import ProbabilisticModels as PM
 
 # Configure logging
 logger = get_logger(__name__)
 
 router = APIRouter(tags=["simulation"])
-
 
 # =============================================================================
 # PYDANTIC MODELS - These define the API contract with Person 3
@@ -428,11 +443,10 @@ async def execute_simulation(
     try:
         await sim_manager.update_status(run_id, "running", progress=0)
  
-        timesteps   = int(config.mission_duration_hours * 60 / config.time_step_minutes)
-        dt_hours    = config.time_step_minutes / 60.0
+        timesteps    = int(config.mission_duration_hours * 60 / config.time_step_minutes)
+        dt_hours     = config.time_step_minutes / 60.0
         n_astronauts = getattr(config, "num_astronauts", 1)
  
-        # Shared BioGears adapter (one instance, shared across astronauts)
         biogears = BioGearsAdapter() if config.use_biogears else None
  
         all_states     = []
@@ -440,108 +454,205 @@ async def execute_simulation(
         all_statistics = []
  
         for astro_idx in range(n_astronauts):
-            # Slight per-astronaut parameter variation (±5% noise on baseline)
-            rng_seed   = astro_idx * 7919   # deterministic, distinct per astronaut
-            rng        = np.random.default_rng(rng_seed)
+            rng_seed  = astro_idx * 7919
+            rng       = np.random.default_rng(rng_seed)
+ 
+            # ── Per-astronaut physiological variability ────────────────
             hr_offset  = float(rng.normal(0, 3))
             slp_noise  = float(rng.normal(0, 0.05))
+            tau_wake   = float(np.clip(rng.normal(18.2, 1.5),  12.0, 24.0))
+            tau_sleep  = float(np.clip(rng.normal(4.2,  0.4),   2.5,  6.5))
+            k_adapt    = float(np.clip(rng.normal(0.18, 0.03),  0.08, 0.35))
+            w_s        = float(rng.uniform(0.55, 0.75))
  
+            baseline_sq = float(np.clip(
+                config.baseline_sleep_quality + slp_noise, 0.1, 1.0
+            ))
+            S_0 = float(np.clip(0.60 - baseline_sq * 0.40, 0.10, 0.55))
+ 
+            # ── State ─────────────────────────────────────────────────
             state = AstronautState(
-                timesteps             = timesteps,
-                dt_minutes            = config.time_step_minutes,
-                baseline_hr           = config.baseline_hr + hr_offset,
-                baseline_sleep_quality= float(np.clip(config.baseline_sleep_quality + slp_noise, 0.1, 1.0)),
-                initial_fatigue       = config.initial_fatigue,
+                timesteps              = timesteps,
+                dt_minutes             = config.time_step_minutes,
+                baseline_hr            = config.baseline_hr + hr_offset,
+                baseline_sleep_quality = baseline_sq,
+                initial_fatigue        = config.initial_fatigue,
             )
  
-            prob_models    = ProbabilisticModels()
-            fatigue_model  = FatigueModel()
-            coupling_engine= CouplingEngine()
-            scheduler      = EventScheduler()
+            # ── Physics engine (replaces FatigueModel + raw Poisson MS) ─
+            engine = PhysicsEngine(
+                borbely_params    = BorbelyParameters(tau_wake=tau_wake,
+                                                      tau_sleep=tau_sleep,
+                                                      S_0=S_0),
+                vestibular_params = VestibularParameters(k_adapt_0=k_adapt,
+                                                         w_s=w_s),
+                fatigue_params    = FatigueParameters(),
+            )
+            engine.seed(rng_seed)
+            engine.reset(initial_fatigue=config.initial_fatigue, S_0=S_0)
  
-            # Baseline trajectories
+            coupling_engine = CouplingEngine(k_adapt_0=k_adapt, w_s=w_s)
+            scheduler       = EventScheduler()
+ 
+            # ── Extra arrays for novel ODE states ─────────────────────
+            S_arr        = np.zeros(timesteps, dtype=np.float32)
+            C_arr        = np.zeros(timesteps, dtype=np.float32)
+            mismatch_arr = np.zeros(timesteps, dtype=np.float32)
+            k_adapt_arr  = np.zeros(timesteps, dtype=np.float32)
+            cum_mis_arr  = np.zeros(timesteps, dtype=np.float32)
+ 
+            # Baseline HR (physics engine will refine via hr_delta)
             time_hours = np.arange(timesteps) * dt_hours
             circadian  = 5.0 * np.sin(2 * np.pi * time_hours / 24.0)
-            state.hr[:]            = np.clip(prob_models.sample_heart_rate(size=timesteps) + circadian, 40, 200)
-            state.sleep_quality[:] = np.clip(prob_models.sample_sleep_quality(size=timesteps), 0.05, 1.0)
+            state.hr[:] = np.clip(
+                rng.normal(config.baseline_hr + hr_offset, 6.0, timesteps) + circadian,
+                40, 200,
+            ).astype(np.float32)
  
-            # Main simulation loop
+            # ── Main loop ──────────────────────────────────────────────
             for t in range(timesteps):
-                progress = ((astro_idx * timesteps + t) / (n_astronauts * timesteps)) * 100
+                progress = ((astro_idx * timesteps + t)
+                            / (n_astronauts * timesteps)) * 100
                 if t % 100 == 0:
-                    await sim_manager.update_status(run_id, "running", progress=progress)
+                    await sim_manager.update_status(run_id, "running",
+                                                    progress=progress)
  
+                t_h = float(state.time[t]) / 60.0  # minutes → hours
+ 
+                # ── Physics step ───────────────────────────────────────
+                phys = engine.step(dt_hours=dt_hours, t_h=t_h, sensory_input=1.0)
+ 
+                # Store novel ODE states
+                S_arr[t]        = phys["S"]
+                C_arr[t]        = phys["C"]
+                mismatch_arr[t] = phys["mismatch"]
+                k_adapt_arr[t]  = phys["k_adapt"]
+                cum_mis_arr[t]  = phys["cumulative_mismatch"]
+ 
+                # Update physics-derived state variables
+                state.update(t, sleep_quality=float(np.clip(phys["sleep_quality"], 0.05, 1.0)))
+                if t > 0:
+                    state.update(t, fatigue=float(np.clip(phys["fatigue"], 0.0, 10.0)))
+ 
+                # HR: add vestibulo-cardiac reflex delta from physics
+                state.hr[t] = float(np.clip(
+                    state.hr[t] + phys["hr_delta"] * 0.1,   # partial per-step contribution
+                    40, 200,
+                ))
+ 
+                # ── Coupling diagnostics ───────────────────────────────
+                coupling_out = coupling_engine.update(phys, dt_hours)
+ 
+                # ── Event scheduler  (MS onset from ODE p_ms_step) ────
+                # Inject physics outputs into coupling_effects so
+                # MotionSicknessEvent.sample_onset() receives them.
                 coupling_effects = {
-                    'motion_sickness': {
-                        'fatigue_multiplier': coupling_engine.compute_fatigue_effect_on_ms(
-                            base_probability=1.0,
-                            fatigue_level=float(state.fatigue[t - 1]) if t > 0 else 0,
-                        )[0]
+                    "motion_sickness": {
+                        "p_ms_step":   phys["p_ms_step"],
+                        "k_suppress":  coupling_out["k_suppress"],
+                        "k_adapt":     phys["k_adapt"],
+                        "fatigue_multiplier": 1.0,   # legacy field, unused now
                     }
                 }
  
                 event_summary = scheduler.process_time_step(
                     state=state, t=t, dt_hours=dt_hours,
-                    coupling_effects=coupling_effects
+                    coupling_effects=coupling_effects,
                 )
  
-                new_events = event_summary.get('new_events', [])
-                sms_events = [e for e in new_events if 'motion' in e.get('type', '').lower()]
-                sms_severity = max((e.get('severity', 0) for e in sms_events), default=0.0)
- 
-                current_fat = float(state.fatigue[t - 1]) if t > 0 else config.initial_fatigue
-                t_h = float(state.time[t]) / 60.0
-                import math
-                circadian_stress = 0.08 + 0.06 * math.sin(2 * math.pi * (t_h % 24) / 24 - math.pi / 2)
-                fatigue_stress   = min(0.45, (current_fat / 10.0) * 0.60)
-                acute_stress     = min(0.50, float(sms_severity) * 0.70)
-                total_stress     = min(0.95, 0.12 + circadian_stress + fatigue_stress + acute_stress)
+                # ── Stress (circadian + fatigue + motion severity) ─────
+                current_fat     = float(state.fatigue[t])
+                mot_sev         = float(state.motion_severity[t])
+                circadian_stress = 0.08 + 0.06 * math.sin(
+                    2 * math.pi * (t_h % 24) / 24.0 - math.pi / 2
+                )
+                total_stress = float(np.clip(
+                    0.12 + circadian_stress
+                    + min(0.45, current_fat / 10.0 * 0.60)
+                    + min(0.50, mot_sev * 0.70),
+                    0.0, 0.95,
+                ))
                 state.update(t, stress=total_stress)
  
-                if t > 0:
-                    mot_sev = float(state.motion_severity[t])
-                    new_fatigue, _ = fatigue_model.compute_fatigue_update(
-                        current_fatigue=state.fatigue[t - 1],
-                        sleep_quality=state.sleep_quality[t],
-                        motion_severity=mot_sev,
-                        dt_hours=dt_hours,
-                    )
-                    state.update(t, fatigue=new_fatigue)
- 
+                # ── BioGears (unchanged) ───────────────────────────────
                 if config.use_biogears and biogears:
-                    for event in event_summary.get('new_events', []):
-                        if event['type'] == 'MotionSicknessEvent':
+                    for event in event_summary.get("new_events", []):
+                        if event["type"] == "MotionSicknessEvent":
                             perturbation = {
-                                'type':             'motion_sickness',
-                                'nausea_severity':  event.get('severity', 0.3),
-                                'duration_minutes': event.get('duration', 10.0) * 60,
-                                'baseline_hr':      config.baseline_hr + hr_offset,
-                                'fatigue_level':    float(state.fatigue[t - 1]) if t > 0 else 0.0,
+                                "type":             "motion_sickness",
+                                "nausea_severity":  event.get("severity", 0.3),
+                                "duration_minutes": event.get("duration", 10.0) * 60,
+                                "baseline_hr":      config.baseline_hr + hr_offset,
+                                "fatigue_level":    float(state.fatigue[t - 1]) if t > 0 else 0.0,
                             }
                             bio_response = await biogears.run_perturbation_async(perturbation)
                             if bio_response:
-                                state.update(t, hr=min(float(bio_response.get('hr', state.hr[t])), 160.0))
+                                state.update(
+                                    t,
+                                    hr=min(float(bio_response.get("hr", state.hr[t])), 160.0),
+                                )
  
-            # ── Per-astronaut analytics ────────────────────────────────────
-            state_dict     = state.to_dict()
+            # ── Per-astronaut analytics ────────────────────────────────
+            state_dict = state.to_dict()
+ 
+            # Attach novel ODE states to state dict for API consumers
+            state_dict["S"]               = S_arr.tolist()
+            state_dict["C"]               = C_arr.tolist()
+            state_dict["mismatch"]        = mismatch_arr.tolist()
+            state_dict["k_adapt"]         = k_adapt_arr.tolist()
+            state_dict["cum_mismatch"]    = cum_mis_arr.tolist()
+ 
+            # Coupling excess-risk diagnostics
+            coupling_diag = CouplingDiagnostics.analyse(
+                fatigue_trace              = state_dict["fatigue"],
+                cumulative_mismatch_trace  = cum_mis_arr.tolist(),
+                S_norm_trace               = (S_arr / 1.0).tolist(),
+                k_adapt_trace              = k_adapt_arr.tolist(),
+                dt_hours                   = dt_hours,
+                k_adapt_0                  = k_adapt,
+                w_s                        = w_s,
+            )
+ 
             event_timeline = scheduler.get_timeline()
-            risk_report    = compute_full_risk_report(state=state_dict, events=event_timeline)
-            trend_report   = compute_full_trend_report(state=state_dict, events=event_timeline)
-            risk_trace     = risk_report.pop("risk_score_trace", [])
+            risk_report    = compute_full_risk_report(
+                state=state_dict, events=event_timeline
+            )
+            # Attach coupling diagnostics to risk report
+            risk_report["coupling_diagnostics"] = {
+                "mean_excess_p_ms":        coupling_diag["mean_excess_p_ms"],
+                "joint_risk_excess":       coupling_diag["joint_risk_excess_fraction"],
+                "mean_k_suppress":         coupling_diag["mean_k_suppress"],
+                "time_high_coupling_frac": coupling_diag["time_high_coupling_frac"],
+                "coupling_engine_summary": coupling_engine.get_coupling_summary(),
+            }
  
-            state_dict["_astronaut_id"]    = astro_idx
-            state_dict["_risk_report"]     = risk_report
-            state_dict["_trend_report"]    = trend_report
-            state_dict["_risk_trace"]      = risk_trace
+            trend_report = compute_full_trend_report(
+                state=state_dict, events=event_timeline
+            )
+            risk_trace = risk_report.pop("risk_score_trace", [])
+ 
+            state_dict["_astronaut_id"]  = astro_idx
+            state_dict["_risk_report"]   = risk_report
+            state_dict["_trend_report"]  = trend_report
+            state_dict["_risk_trace"]    = risk_trace
  
             all_states.append(state_dict)
             all_events.append(event_timeline)
             all_statistics.append(scheduler.get_event_statistics())
  
-        # ── Aggregate across astronauts ────────────────────────────────────
-        peak_fatigues    = [s.get("_risk_report", {}).get("threshold_metrics", {}).get("fatigue", {}).get("peak", 0) for s in all_states]
-        overall_risk     = "CRITICAL" if any(s.get("_risk_report", {}).get("overall_risk_level") == "CRITICAL" for s in all_states) else \
-                           "HIGH"     if any(s.get("_risk_report", {}).get("overall_risk_level") == "HIGH"     for s in all_states) else "MODERATE"
+        # ── Aggregate across astronauts ────────────────────────────────
+        peak_fatigues = [
+            s.get("_risk_report", {})
+             .get("threshold_metrics", {})
+             .get("fatigue", {})
+             .get("peak", 0)
+            for s in all_states
+        ]
+        overall_risk = (
+            "CRITICAL" if any(s.get("_risk_report", {}).get("overall_risk_level") == "CRITICAL" for s in all_states)
+            else "HIGH" if any(s.get("_risk_report", {}).get("overall_risk_level") == "HIGH"     for s in all_states)
+            else "MODERATE"
+        )
  
         final_status = {
             "run_id":          run_id,
@@ -550,14 +661,14 @@ async def execute_simulation(
             "completed_at":    datetime.now(),
             "events_triggered": sum(s.get("total_events_triggered", 0) for s in all_statistics),
             "metrics": {
-                "n_astronauts":         n_astronauts,
-                "peak_fatigue":         float(max(peak_fatigues)) if peak_fatigues else 0.0,
-                "avg_sleep_quality":    float(np.mean([np.mean(s["sleep_quality"]) for s in all_states])),
-                "overall_risk_level":   overall_risk,
-            }
+                "n_astronauts":       n_astronauts,
+                "peak_fatigue":       float(max(peak_fatigues)) if peak_fatigues else 0.0,
+                "avg_sleep_quality":  float(np.mean([np.mean(s["sleep_quality"]) for s in all_states])),
+                "overall_risk_level": overall_risk,
+                "model":              "borbely_oman_coupled_ode",
+            },
         }
  
-        # Use first astronaut's state as primary for backward-compat
         primary_state = all_states[0] if all_states else {}
  
         await sim_manager.store_results(
@@ -568,11 +679,9 @@ async def execute_simulation(
             final_status = final_status,
         )
  
-        # Store analytics for primary astronaut
         primary_risk  = primary_state.pop("_risk_report",  {})
         primary_trend = primary_state.pop("_trend_report", {})
         primary_trace = primary_state.pop("_risk_trace",   [])
-        # Clean up helper keys
         for s in all_states:
             s.pop("_astronaut_id", None)
             s.pop("_risk_report",  None)
@@ -586,7 +695,10 @@ async def execute_simulation(
             risk_trace   = primary_trace,
         )
  
-        logger.info(f"Simulation {run_id} completed — {n_astronauts} astronaut(s), risk={overall_risk}")
+        logger.info(
+            f"Simulation {run_id} completed — {n_astronauts} astronaut(s), "
+            f"risk={overall_risk}, model=borbely_oman_coupled_ode"
+        )
  
     except Exception as e:
         logger.error(f"Simulation {run_id} failed: {e}", exc_info=True)
