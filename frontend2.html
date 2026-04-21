@@ -1297,15 +1297,26 @@ function _setRiskExplainLoading(loading) {
   }
 }
 
-const GROQ_API_KEY = 'REMOVED';
-const GROQ_MODEL  = 'llama-3.3-70b-versatile'; // current recommended Groq model
-
+let GROQ_API_KEY = '';
+const GROQ_MODEL  = 'llama-3.3-70b-versatile';
+ 
+(async () => {
+  try {
+    const res = await fetch('/api/config');
+    if (!res.ok) throw new Error(`Config fetch failed: ${res.status}`);
+    const cfg = await res.json();
+    GROQ_API_KEY = cfg.groq_api_key;
+  } catch (err) {
+    console.error('Could not load runtime config:', err);
+  }
+})();
 // ── Central Groq caller ────────────────────────────────────────────────────
 // systemPrompt : string
 // messages     : [{role:'user'|'assistant', content:string}, ...]
 // maxTokens    : number  (optional, default 1000)
 // signal       : AbortSignal (optional)
 async function _groqChat(systemPrompt, messages, maxTokens = 1000, signal) {
+  if (!GROQ_API_KEY) throw new Error('Groq API key not initialised yet.');
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: {
