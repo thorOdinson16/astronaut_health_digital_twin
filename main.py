@@ -41,7 +41,7 @@ import yaml
 
 # Local imports
 from api.routes import simulation, data, health
-from api.dependencies import lifespan, get_simulation_manager, get_config_loader
+from api.dependencies import get_simulation_manager, get_config_loader
 from utils.logger import setup_logging, get_logger
 from utils.helpers import get_version, get_git_revision
 
