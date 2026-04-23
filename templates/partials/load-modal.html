@@ -1,0 +1,17 @@
+<div id="load-overlay" onclick="closeLoadModal(event)">
+  <div id="load-modal">
+    <div class="ptitle">⇩ LOAD EXISTING SIMULATION RUN</div>
+    <div id="load-refresh-spinner"></div>
+    <div id="load-modal-body">
+      <div id="load-list-wrap">
+        <div id="load-list"><div id="load-empty">FETCHING RUNS...</div></div>
+      </div>
+    </div>
+    <div id="load-modal-btns">
+      <button type="button" class="btn" onclick="refreshRunList()">↺ REFRESH</button>
+      <button type="button" class="btn" id="btn-load-confirm" onclick="confirmLoad()" disabled style="border-color:var(--cyan);color:var(--cyan)">◈ LOAD SELECTED</button>
+      <button type="button" class="btn" id="btn-delete-run" onclick="deleteSelectedRun()" disabled style="border-color:var(--red);color:var(--red)">✕ DELETE</button>
+      <button type="button" class="btn" onclick="closeLoadModal()">✕ CANCEL</button>
+    </div>
+  </div>
+</div>

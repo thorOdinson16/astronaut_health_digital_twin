@@ -1,0 +1,50 @@
+<div id="charts-row" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+  <div class="cpanel" style="background:transparent;border:none;padding:0">
+    <div class="ctitle">FATIGUE INDEX</div>
+    <div class="cexpand" onclick="openFullChart('fat','FATIGUE INDEX')">⤢</div>
+    <div class="cwrap"><canvas id="ch-fat"></canvas></div>
+    <div class="cslider-row" id="scr-fat">
+      <button class="csbtn" onclick="chartPrev('fat')">◀</button>
+      <input type="range" class="cslider" id="sl-fat" min="0" max="100" value="0" oninput="chartScrub('fat',+this.value)">
+      <button class="csbtn" onclick="chartNext('fat')">▶</button>
+      <span class="cstime" id="st-fat">0h</span>
+      <button class="cslive" id="lv-fat" onclick="chartResume('fat')">▶</button>
+    </div>
+  </div>
+  <div class="cpanel" style="background:transparent;border:none;padding:0">
+    <div class="ctitle">HEART RATE · BIOGEARS OUTPUT</div>
+    <div class="cexpand" onclick="openFullChart('hr','HEART RATE')">⤢</div>
+    <div class="cwrap"><canvas id="ch-hr"></canvas></div>
+    <div class="cslider-row" id="scr-hr">
+      <button class="csbtn" onclick="chartPrev('hr')">◀</button>
+      <input type="range" class="cslider" id="sl-hr" min="0" max="100" value="0" oninput="chartScrub('hr',+this.value)">
+      <button class="csbtn" onclick="chartNext('hr')">▶</button>
+      <span class="cstime" id="st-hr">0h</span>
+      <button class="cslive" id="lv-hr" onclick="chartResume('hr')">▶</button>
+    </div>
+  </div>
+  <div class="cpanel" style="background:transparent;border:none;padding:0">
+    <div class="ctitle">SLEEP QUALITY</div>
+    <div class="cexpand" onclick="openFullChart('slp','SLEEP QUALITY')">⤢</div>
+    <div class="cwrap"><canvas id="ch-slp"></canvas></div>
+    <div class="cslider-row" id="scr-slp">
+      <button class="csbtn" onclick="chartPrev('slp')">◀</button>
+      <input type="range" class="cslider" id="sl-slp" min="0" max="100" value="0" oninput="chartScrub('slp',+this.value)">
+      <button class="csbtn" onclick="chartNext('slp')">▶</button>
+      <span class="cstime" id="st-slp">0h</span>
+      <button class="cslive" id="lv-slp" onclick="chartResume('slp')">▶</button>
+    </div>
+  </div>
+  <div class="cpanel" style="background:transparent;border:none;padding:0">
+    <div class="ctitle">COMPOSITE RISK SCORE</div>
+    <div class="cexpand" onclick="openFullChart('rsk','COMPOSITE RISK SCORE')">⤢</div>
+    <div class="cwrap"><canvas id="ch-rsk"></canvas></div>
+    <div class="cslider-row" id="scr-rsk">
+      <button class="csbtn" onclick="chartPrev('rsk')">◀</button>
+      <input type="range" class="cslider" id="sl-rsk" min="0" max="100" value="0" oninput="chartScrub('rsk',+this.value)">
+      <button class="csbtn" onclick="chartNext('rsk')">▶</button>
+      <span class="cstime" id="st-rsk">0h</span>
+      <button class="cslive" id="lv-rsk" onclick="chartResume('rsk')">▶</button>
+    </div>
+  </div>
+</div>

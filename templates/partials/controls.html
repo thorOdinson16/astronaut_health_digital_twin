@@ -1,0 +1,74 @@
+<div class="panel" id="panel-ctrl">
+  <div class="ptitle">MISSION CONTROL</div>
+  
+  <div id="preset-wrap">
+    <div class="clabel">MISSION PRESET</div>
+    <select id="ctrl-preset">
+      <option value="custom">CUSTOM</option>
+      <option value="iss">ISS EXPEDITION</option>
+      <option value="mars">MARS TRANSIT</option>
+      <option value="eva">EVA PREPARATION</option>
+      <option value="lunar">LUNAR SURFACE</option>
+    </select>
+    <div id="preset-desc">CUSTOM MISSION PROFILE</div>
+  </div>
+  
+  <div class="crow"><div class="clabel">MISSION DURATION <span id="lbl-cyc">30 days</span></div><input type="range" id="ctrl-cyc" min="1" max="365" value="30" step="1"></div>
+  <div class="crow"><div class="clabel">SMS RATE (λ/day) <span id="lbl-lam">0.72</span></div><input type="range" id="ctrl-lam" min="1" max="200" value="72" step="1"></div>
+  <div class="crow"><div class="clabel">RECOVERY FACTOR <span id="lbl-rec">1.0×</span></div><input type="range" id="ctrl-rec" min="5" max="20" value="10" step="1"></div>
+  <div class="crow"><div class="clabel">FATIGUE SENSITIVITY <span id="lbl-fsens">1.0×</span></div><input type="range" id="ctrl-fsens" min="5" max="20" value="10" step="1"></div>
+  
+  <div id="run-btn-wrap" style="position:relative">
+    <button type="button" class="btn primary" id="btn-run" onclick="startSimulation(event)">◈ RUN SIMULATION</button>
+    <div id="sim-info-icon"
+         style="display:flex;position:absolute;right:0;top:5px;bottom:0;width:26px;
+                align-items:center;justify-content:center;
+                font-size:12px;cursor:default;z-index:10;
+                color:var(--amber);font-family:sans-serif"
+         onmouseenter="showSimTooltip()" onmouseleave="scheduleHideSimTooltip()"
+         onclick="event.stopPropagation()">ℹ</div>
+    <div id="sim-tooltip"
+         onmouseenter="cancelHideSimTooltip()" onmouseleave="scheduleHideSimTooltip()"
+         style="display:block;position:absolute;top:calc(100% + 5px);left:0;right:auto;z-index:600;
+                background:#050f1e;border:1px solid var(--border2);border-radius:4px;
+                padding:10px 11px;font-family:var(--mono);font-size:9px;
+                box-shadow:0 10px 30px rgba(0,0,0,.7)">
+      <div style="color:var(--cyan);letter-spacing:2px;font-size:8px;border-bottom:1px solid var(--border);padding-bottom:5px;margin-bottom:8px">◈ ACTIVE SIMULATIONS</div>
+      <div id="sim-tooltip-list" style="max-height:260px;overflow-y:auto;min-width:280px"></div>
+    </div>
+  </div>
+  
+  <button type="button" class="btn" id="btn-load" onclick="openLoadModal()" style="border-color:var(--purple);color:var(--purple)">⇩ LOAD EXISTING</button>
+  <button type="button" class="btn primary" id="btn-play" onclick="startPlay()" disabled>▶ PLAY RESULTS</button>
+  
+  <div class="crow" style="margin-top:6px">
+    <div class="clabel">PLAYBACK SPEED <span id="lbl-spd">1.0×</span></div>
+    <input type="range" id="ctrl-spd" min="1" max="8" value="3" oninput="document.getElementById('lbl-spd').textContent=`${(+this.value/3).toFixed(1)}×`">
+  </div>
+  
+  <div style="display:flex;gap:5px;margin-top:2px">
+    <button type="button" class="btn" id="btn-pause" onclick="togglePause()" disabled style="flex:1;margin:0">⏸ PAUSE</button>
+    <button type="button" class="btn" id="btn-reset" onclick="resetPlay()" disabled style="flex:1;margin:0">⏮ RESET</button>
+  </div>
+  
+  <div style="border-top:1px solid var(--border2);margin:10px 0 8px"></div>
+  
+  <div class="ptitle">SIMULATION CONTROL</div>
+  <div class="crow">
+    <div class="clabel">MC SIMULATIONS <span id="lbl-mc-runs">50</span></div>
+    <input type="range" id="ctrl-mc-runs" min="10" max="500" value="50" step="10" oninput="document.getElementById('lbl-mc-runs').textContent=this.value">
+  </div>
+  <div class="crow">
+    <div class="clabel">BASELINE SLEEP Q. <span id="lbl-mc-slp">0.80</span></div>
+    <input type="range" id="ctrl-mc-slp" min="40" max="100" value="80" step="5" oninput="document.getElementById('lbl-mc-slp').textContent=(this.value/100).toFixed(2)">
+  </div>
+  <div class="crow">
+    <div class="clabel">FATIGUE RISK THRESH. <span id="lbl-mc-fat-thr">5.0</span></div>
+    <input type="range" id="ctrl-mc-fat-thr" min="10" max="90" value="50" step="5" oninput="document.getElementById('lbl-mc-fat-thr').textContent=(this.value/10).toFixed(1)">
+  </div>
+  <div class="crow">
+    <div class="clabel">SLEEP RISK THRESH. <span id="lbl-mc-slp-thr">0.40</span></div>
+    <input type="range" id="ctrl-mc-slp-thr" min="10" max="80" value="40" step="5" oninput="document.getElementById('lbl-mc-slp-thr').textContent=(this.value/100).toFixed(2)">
+  </div>
+  <button type="button" class="btn primary" id="btn-mc" onclick="runMonteCarlo()">◈ RUN MONTE CARLO</button>
+</div>

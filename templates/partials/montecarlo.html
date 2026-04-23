@@ -1,0 +1,40 @@
+<div id="mc-section" style="display:none;background:var(--panel);border:1px solid var(--border);border-radius:3px;padding:11px">
+  <div class="ptitle" style="margin-bottom:10px">◈ SIMULATION RISK ANALYTICS</div>
+  
+  <div id="mc-progress-wrap" style="display:none;padding:16px 0">
+    <div style="font-size:9px;color:var(--text);letter-spacing:2px;margin-bottom:10px" id="mc-prog-label">INITIALIZING MONTE CARLO ENGINE...</div>
+    <div style="background:var(--border);border-radius:3px;height:6px;overflow:hidden;margin-bottom:8px">
+      <div id="mc-prog-bar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--cyan),var(--green));border-radius:3px;transition:width .3s ease"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:8px;color:var(--text);margin-bottom:14px">
+      <span id="mc-prog-pct">0%</span>
+      <span id="mc-prog-runs">0 / — trajectories</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px">
+      <div style="background:rgba(0,212,255,.04);border:1px solid var(--border);border-radius:3px;padding:7px;text-align:center;font-size:8px;letter-spacing:1px" id="mcs-traj">
+        <div style="color:var(--text)">TRAJECTORIES</div><div id="mcs-traj-val" style="color:var(--cyan);font-size:16px;margin-top:3px">—</div>
+      </div>
+      <div style="background:rgba(0,212,255,.04);border:1px solid var(--border);border-radius:3px;padding:7px;text-align:center;font-size:8px;letter-spacing:1px" id="mcs-elapsed">
+        <div style="color:var(--text)">ELAPSED</div><div id="mcs-elapsed-val" style="color:var(--amber);font-size:16px;margin-top:3px">0s</div>
+      </div>
+      <div style="background:rgba(0,212,255,.04);border:1px solid var(--border);border-radius:3px;padding:7px;text-align:center;font-size:8px;letter-spacing:1px" id="mcs-eta">
+        <div style="color:var(--text)">ETA</div><div id="mcs-eta-val" style="color:var(--green);font-size:16px;margin-top:3px">—</div>
+      </div>
+    </div>
+  </div>
+  
+  <div id="mc-results-wrap">
+    <div id="mc-grid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
+      <div><div class="ctitle">FATIGUE ENVELOPE</div><div class="mc-cwrap"><canvas id="ch-mc-t"></canvas></div></div>
+      <div><div class="ctitle">SLEEP QUALITY ENVELOPE</div><div class="mc-cwrap"><canvas id="ch-mc-h"></canvas></div></div>
+    </div>
+    <div id="mc-stats" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:10px"></div>
+    <div id="mc-conclusions" style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);font-size:9px;color:var(--text);display:none"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;padding-top:8px;border-top:1px solid var(--border)">
+      <button type="button" class="btn" id="btn-explain-risk-mc" onclick="explainRiskMC()" style="width:auto;min-width:130px;margin:0;border-color:var(--cyan);color:var(--cyan)">EXPLAIN RISK</button>
+      <button type="button" class="btn" id="btn-export-report-mc" onclick="exportMCReport()" style="width:auto;min-width:130px;margin:0">EXPORT REPORT</button>
+      <div id="mc-risk-spinner" style="display:none;width:14px;height:14px;border:2px solid rgba(0,212,255,.25);border-top-color:var(--cyan);border-radius:50%;animation:rspin .7s linear infinite;align-self:center"></div>
+    </div>
+    <div id="mc-explain-wrap" style="display:none;margin-top:8px;padding:8px;border:1px solid var(--border);background:rgba(0,212,255,.03);border-radius:3px;font-size:9px;line-height:1.6;color:var(--textbright);max-height:300px;overflow-y:auto"></div>
+  </div>
+</div>

@@ -1,0 +1,12 @@
+<div id="mission-risk-section" style="display:none;background:var(--panel);border:1px solid var(--border);border-radius:3px;padding:11px">
+  <div class="ptitle" style="margin-bottom:10px">◈ MISSION RISK ANALYTICS</div>
+  <div id="mission-risk-stats" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px"></div>
+  <table id="rtable" style="width:100%;border-collapse:collapse;font-size:11px"></table>
+  <div id="mission-risk-conclusions" style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);font-size:9px;color:var(--text);display:none"></div>
+  <div id="risk-actions">
+    <button type="button" class="btn" id="btn-explain-risk" onclick="explainRisk()" style="width:auto;min-width:130px;margin:0;border-color:var(--cyan);color:var(--cyan)">EXPLAIN RISK</button>
+    <button type="button" class="btn" id="btn-export-report" onclick="exportSimReport()" style="width:auto;min-width:130px;margin:0">EXPORT REPORT</button>
+    <div id="risk-spinner" aria-hidden="true"></div>
+  </div>
+  <div id="risk-explain-wrap"></div>
+</div>

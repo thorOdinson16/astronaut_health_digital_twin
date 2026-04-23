@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block content %}
+  {% include "partials/header.html" %}
+  {% include "partials/api-bar.html" %}
+  
+  <div id="main-grid">
+    {% include "partials/controls.html" %}
+    {% include "partials/twin-panel.html" %}
+    {% include "partials/status-panel.html" %}
+  </div>
+  
+  {% include "partials/timeline.html" %}
+  {% include "partials/charts.html" %}
+  {% include "partials/mission-risk.html" %}
+  {% include "partials/montecarlo.html" %}
+  {% include "partials/run-comparison.html" %}
+{% endblock %}

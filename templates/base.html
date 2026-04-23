@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Astronaut Digital Twin</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🚀</text></svg>">
+</head>
+<body>
+    <div id="app">
+        {% block content %}{% endblock %}
+    </div>
+
+    <!-- Debug Positioning Tool (Ctrl+Shift+D to toggle) -->
+    <button type="button" id="dbtn" style="display:none">🔧 POS</button>
+    <div id="dbpanel">
+        <h4>ASTRONAUT POSITION TOOL</h4>
+
+        <div class="dsec">ROOM CONTROLS (move entire room+astro+TARS)</div>
+        <div class="drow">
+            <span class="dlbl">RX ←→</span>
+            <button class="dcoarse" onclick="nudge('rx',-1)">◀</button>
+            <input type="range" id="db-rx" min="-5000" max="5000" value="26" step="1" oninput="applyPos()">
+            <button class="dcoarse" onclick="nudge('rx',1)">▶</button>
+            <span class="dval" id="db-rxv">2.6</span>
+        </div>
+        <div class="drow">
+            <span class="dlbl">RY ↑↓</span>
+            <button class="dcoarse" onclick="nudge('rY',-1)">▼</button>
+            <input type="range" id="db-rY" min="-5000" max="5000" value="58" step="1" oninput="applyPos()">
+            <button class="dcoarse" onclick="nudge('rY',1)">▲</button>
+            <span class="dval" id="db-rYv">5.8</span>
+        </div>
+        <div class="drow">
+            <span class="dlbl">RZ ↙↗</span>
+            <button class="dcoarse" onclick="nudge('rz',-1)">◀</button>
+            <input type="range" id="db-rz" min="-5000" max="5000" value="102" step="1" oninput="applyPos()">
+            <button class="dcoarse" onclick="nudge('rz',1)">▶</button>
+            <span class="dval" id="db-rzv">10.2</span>
+        </div>
+        <div class="drow">
+            <span class="dlbl">RSCALE</span>
+            <button class="dcoarse" onclick="nudge('rs',-1)">−</button>
+            <input type="range" id="db-rs" min="1" max="200" value="20" step="1" oninput="applyPos()">
+            <button class="dcoarse" onclick="nudge('rs',1)">+</button>
+            <span class="dval" id="db-rsv">2.0×</span>
+        </div>
+
+        <div class="dsec">ASTRONAUT POSITION (inside room)</div>
+        <div class="drow">
+            <span class="dlbl">X  ←→</span>
+            <button class="dcoarse" onclick="nudge('x',-1)">◀</button>
+            <input type="range" id="db-x" min="-500" max="500" value="0" step="1" oninput="applyPos()">
+            <button class="dcoarse" onclick="nudge('x',1)">▶</button>
+            <span class="dval" id="db-xv">0.0</span>
+        </div>
+        <div class="drow">
+            <span class="dlbl">Y  ↑↓</span>
+            <button class="dcoarse" onclick="nudge('y',-1)">▼</button>
+            <input type="range" id="db-y" min="-500" max="500" value="0" step="1" oninput="applyPos()">
+            <button class="dcoarse" onclick="nudge('y',1)">▲</button>
+            <span class="dval" id="db-yv">0.0</span>
+        </div>
+        <div class="drow">
+            <span class="dlbl">Z  ↙↗</span>
+            <button class="dcoarse" onclick="nudge('z',-1)">◀</button>
+            <input type="range" id="db-z" min="-500" max="500" value="1" step="1" oninput="applyPos()">
+            <button class="dcoarse" onclick="nudge('z',1)">▶</button>
+            <span class="dval" id="db-zv">0.1</span>
+        </div>
+
+        <div class="dsec">ASTRONAUT SCALE & ROTATION</div>
+        <div class="drow">
+            <span class="dlbl">SCALE</span>
+            <button class="dcoarse" onclick="nudge('s',-1)">−</button>
+            <input type="range" id="db-s" min="1" max="200" value="10" step="1" oninput="applyPos()">
+            <button class="dcoarse" onclick="nudge('s',1)">+</button>
+            <span class="dval" id="db-sv">1.0×</span>
+        </div>
+        <div class="drow">
+            <span class="dlbl">ROT Y</span>
+            <button class="dcoarse" onclick="nudge('ry',-5)">◀</button>
+            <input type="range" id="db-ry" min="-180" max="180" value="0" step="5" oninput="applyPos()">
+            <button class="dcoarse" onclick="nudge('ry',5)">▶</button>
+            <span class="dval" id="db-ryv">0°</span>
+        </div>
+
+        <div class="dsec">TARS OFFSET FROM ASTRONAUT</div>
+        <div class="drow">
+            <span class="dlbl">TX</span>
+            <button class="dcoarse" onclick="nudge('tx',-1)">◀</button>
+            <input type="range" id="db-tx" min="-100" max="100" value="28" step="1" oninput="applyPos()">
+            <button class="dcoarse" onclick="nudge('tx',1)">▶</button>
+            <span class="dval" id="db-txv">+2.8</span>
+        </div>
+
+        <div class="dsec">CAMERA MODE</div>
+        <div style="display:flex;gap:6px">
+            <button class="dcoarse" style="width:100%;font-size:9px;letter-spacing:1px" onclick="setCamMode('astro')">ASTRONAUT VIEW</button>
+            <button class="dcoarse" style="width:100%;font-size:9px;letter-spacing:1px" onclick="setCamMode('ship')">SHIP VIEW</button>
+        </div>
+        <div style="margin-top:6px">
+            <button id="btn-set-astro-cam" class="btn" onclick="setAstroCamAsDefault()" 
+                    style="width:100%;margin:0;border-color:var(--amber);color:var(--amber);font-size:9px;display:none">
+                SET AS DEFAULT VIEW
+            </button>
+        </div>
+
+        <div class="dsec">CAMERA POSITION (astro view)</div>
+        <div class="drow">
+            <span class="dlbl">CX ←→</span>
+            <button class="dcoarse" onclick="nudge('cx',-1)">◀</button>
+            <input type="range" id="db-cx" min="-200" max="200" value="-3" step="1" oninput="applyPos()">
+            <button class="dcoarse" onclick="nudge('cx',1)">▶</button>
+            <span class="dval" id="db-cxv">0.0</span>
+        </div>
+        <div class="drow">
+            <span class="dlbl">CY ↑↓</span>
+            <button class="dcoarse" onclick="nudge('cy',-1)">▼</button>
+            <input type="range" id="db-cy" min="-200" max="200" value="0" step="1" oninput="applyPos()">
+            <button class="dcoarse" onclick="nudge('cy',1)">▲</button>
+            <span class="dval" id="db-cyv">3.0</span>
+        </div>
+        <div class="drow">
+            <span class="dlbl">CZ ↙↗</span>
+            <button class="dcoarse" onclick="nudge('cz',-1)">◀</button>
+            <input type="range" id="db-cz" min="-200" max="200" value="-41" step="1" oninput="applyPos()">
+            <button class="dcoarse" onclick="nudge('cz',1)">▶</button>
+            <span class="dval" id="db-czv">0.0</span>
+        </div>
+        <div class="drow">
+            <span class="dlbl">RADIUS</span>
+            <button class="dcoarse" onclick="nudge('cr',-1)">−</button>
+            <input type="range" id="db-cr" min="10" max="300" value="56" step="1" oninput="applyPos()">
+            <button class="dcoarse" onclick="nudge('cr',1)">+</button>
+            <span class="dval" id="db-crv">5.8</span>
+        </div>
+        <div class="drow">
+            <span class="dlbl">THETA ↔</span>
+            <button class="dcoarse" onclick="nudge('cth',-10)">◀</button>
+            <input type="range" id="db-cth" min="-314" max="314" value="7" step="1" oninput="applyPos()">
+            <button class="dcoarse" onclick="nudge('cth',10)">▶</button>
+            <span class="dval" id="db-cthv">0°</span>
+        </div>
+        <div class="drow">
+            <span class="dlbl">PHI ↕</span>
+            <button class="dcoarse" onclick="nudge('cph',-5)">▼</button>
+            <input type="range" id="db-cph" min="-80" max="80" value="9" step="1" oninput="applyPos()">
+            <button class="dcoarse" onclick="nudge('cph',5)">▲</button>
+            <span class="dval" id="db-cphv">0.38</span>
+        </div>
+
+        <div class="dcode" id="db-code" onclick="copyCode()" title="Click to copy">
+            astronaut.position.set(0, 0, 0)
+        </div>
+        <div class="dhint">▲ Click to copy permanent coordinates.<br>Paste into initScene() to lock position.</div>
+    </div>
+
+    <!-- Overlays -->
+    {% include "partials/full-chart-modal.html" %}
+    {% include "partials/load-modal.html" %}
+
+    <!-- Tour overlay -->
+    <button id="tour-help-btn" onclick="startTour(true)" title="Help">?</button>
+    <div id="tour-overlay">
+        <div id="tour-cutout"></div>
+        <div id="tour-tip">
+            <div id="tour-tip-title"></div>
+            <div id="tour-tip-desc"></div>
+            <div id="tour-tip-actions">
+                <button class="btn" id="tour-skip-btn">SKIP</button>
+                <button class="btn primary" id="tour-next-btn">NEXT</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Three.js import map -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+
+    <!-- Three.js module - expose to window without modifying module properties -->
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        // Store on window for non-module scripts to use
+        window.THREE = THREE;
+        window.GLTFLoader = GLTFLoader;
+        // Signal that Three.js is ready
+        window.dispatchEvent(new CustomEvent('three-ready'));
+    </script>
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+    <!-- Application scripts (core functions first) -->
+    <script src="/static/js/utils.js"></script>
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/simulation.js"></script>
+    <script src="/static/js/charts.js"></script>
+    <script src="/static/js/playback.js"></script>
+    <script src="/static/js/montecarlo.js"></script>
+    <script src="/static/js/ai-chat.js"></script>
+    <script src="/static/js/debug-panel.js"></script>
+    <script src="/static/js/tour.js"></script>
+    <script src="/static/js/export.js"></script>
+
+    <!-- 3D Viewer - loads after Three.js is ready -->
+    <script>
+        window.addEventListener('three-ready', () => {
+            const script = document.createElement('script');
+            script.src = '/static/js/3d-viewer.js';
+            script.onload = () => {
+                if (typeof initThree === 'function') initThree();
+            };
+            document.body.appendChild(script);
+        });
+    </script>
+
+    <!-- BGM audio -->
+    <audio id="bgm" loop preload="auto" style="display:none">
+        <source src="/static/No%20Time%20For%20Caution.mp3" type="audio/mpeg">
+    </audio>
+
+    <!-- Check health on load -->
+    <script>window.addEventListener('load', () => { if (typeof checkHealth === 'function') checkHealth(); });</script>
+</body>
+</html>

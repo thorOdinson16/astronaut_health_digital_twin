@@ -1,0 +1,17 @@
+<div class="panel" id="panel-twin">
+  <div class="ptitle" style="text-align:center">ENDURANCE · ASTRONAUT DIGITAL TWIN</div>
+  <canvas id="three-canvas"></canvas>
+  <div id="zoom-hint">SCROLL TO ZOOM · DRAG TO ORBIT · DBL-CLICK RESET</div>
+  <div style="display:flex;gap:6px;width:100%">
+    <button type="button" class="btn" id="btn-cam-ship" onclick="setCamMode('ship')" style="border-color:var(--cyan);color:var(--cyan)">◈ ENDURANCE VIEW</button>
+    <button type="button" class="btn" id="btn-cam-astro" onclick="setCamMode('astro')">◈ ASTRONAUT VIEW</button>
+  </div>
+  <div id="phase-disp">◈ AWAITING MISSION INITIALIZATION</div>
+  <div id="vitals">
+    <div class="vcard"><div class="vlabel">HEART RATE</div><div class="vval" id="v-hr">—</div><div class="vunit">bpm</div></div>
+    <div class="vcard"><div class="vlabel">FATIGUE</div><div class="vval" id="v-fat">—</div><div class="vunit">index</div></div>
+    <div class="vcard"><div class="vlabel">STRESS</div><div class="vval" id="v-str">—</div><div class="vunit">level</div></div>
+    <div class="vcard"><div class="vlabel">SpO₂</div><div class="vval" id="v-spo2">—</div><div class="vunit">%</div></div>
+  </div>
+  <div id="inspect-tip"><div class="ititle"></div><div class="ival"></div></div>
+</div>

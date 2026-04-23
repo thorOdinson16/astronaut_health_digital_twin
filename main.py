@@ -30,7 +30,7 @@ import warnings
 
 # Third-party imports
 from fastapi import FastAPI, Request, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -38,9 +38,11 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.openapi.utils import get_openapi
 import uvicorn
 import yaml
+from fastapi.staticfiles import StaticFiles
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 # Local imports
-from api.routes import simulation, data, health
+from api.routes import simulation, data, health, config
 from api.dependencies import get_simulation_manager, get_config_loader
 from utils.logger import setup_logging, get_logger
 from utils.helpers import get_version, get_git_revision
@@ -55,6 +57,9 @@ __git_revision__ = get_git_revision()
 # Setup logging
 setup_logging()
 logger = get_logger(__name__)
+
+# Base directory for absolute path resolution
+BASE_DIR = Path(__file__).resolve().parent
 
 
 # =============================================================================
@@ -81,7 +86,7 @@ async def lifespan(app: FastAPI):
     
     # Load configuration
     try:
-        config_path = Path("./config")
+        config_path = BASE_DIR / "config"
         if config_path.exists():
             logger.info(f"Loading configuration from: {config_path.absolute()}")
             
@@ -220,21 +225,28 @@ def create_application() -> FastAPI:
     # CORS middleware - Allow Person 3's React app to connect
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "http://localhost:3000",      # React dev server
-            "http://localhost:5173",       # Vite dev server
-            "http://localhost:8080",       # Alternative dev server
-            "http://localhost:5500",
-            "http://127.0.0.1:3000",
-            "http://127.0.0.1:5173",
-            "http://127.0.0.1:5500",
-            "https://dashboard.astronaut-twins.space",  # Production
-        ],
+        allow_origins=["*"],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
-        expose_headers=["X-Request-ID", "X-Process-Time"],
     )
+
+    # Static files - use absolute path
+    static_dir = str(BASE_DIR / "static")
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+    # Templates - use absolute path with Jinja2 Environment directly to avoid cache issues
+    templates_dir = str(BASE_DIR / "templates")
+    jinja_env = Environment(
+        loader=FileSystemLoader(templates_dir),
+        autoescape=select_autoescape(['html', 'xml']),
+        cache_size=0,  # Disable cache for development
+    )
+
+    @app.get("/", response_class=HTMLResponse)
+    async def index(request: Request):
+        template = jinja_env.get_template("index.html")
+        return template.render({"request": request})
     
     # GZip compression for large responses
     app.add_middleware(
@@ -270,8 +282,8 @@ def create_application() -> FastAPI:
     @app.middleware("http")
     async def add_request_id_header(request: Request, call_next):
         """Add X-Request-ID header for tracing."""
-        import uuid
-        request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+        import uuid as uuid_lib
+        request_id = request.headers.get("X-Request-ID", str(uuid_lib.uuid4()))
         response = await call_next(request)
         response.headers["X-Request-ID"] = request_id
         return response
@@ -344,10 +356,10 @@ def create_application() -> FastAPI:
     # ROOT ENDPOINTS
     # =========================================================================
     
-    @app.get("/", tags=["root"])
-    async def root():
+    @app.get("/api", tags=["root"])
+    async def api_root():
         """
-        Root endpoint - API information.
+        API information endpoint.
         
         Returns basic information about the API including version,
         available endpoints, and documentation links.

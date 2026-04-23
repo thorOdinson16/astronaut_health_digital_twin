@@ -502,7 +502,7 @@ async def execute_simulation(
                 progress = (
                     (astro_idx * timesteps + t) / (n_astronauts * timesteps)
                 ) * 100
-                if t % 100 == 0:
+                if t % 20 == 0:
                     await sim_manager.update_status(
                         run_id, "running", progress=progress
                     )
@@ -592,6 +592,7 @@ async def execute_simulation(
                             bio_response = await biogears.run_perturbation_async(
                                 perturbation
                             )
+                            await sim_manager.update_status(run_id, "running", progress=progress)
                             if bio_response:
                                 state.update(
                                     t,

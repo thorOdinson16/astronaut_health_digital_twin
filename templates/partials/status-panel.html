@@ -1,0 +1,24 @@
+<div class="panel" style="height: 100%;position: relative; display: flex; flex-direction: column;">
+  <div class="ptitle">MISSION STATUS</div>
+  <div id="cyc-disp" style="font-size:14px;color:var(--cyan);letter-spacing:2px;margin-bottom:5px">STEP: — / —</div>
+  <div id="phase-name" style="font-size:8px;letter-spacing:3px;color:var(--amber);margin-bottom:10px">STANDBY</div>
+  <div class="srow"><span>PEAK FATIGUE</span><span class="sval" id="st-pf">—</span></div>
+  <div class="srow"><span>SMS EVENTS</span><span class="sval" id="st-sms">0</span></div>
+  <div class="srow"><span>DISRUPTIONS</span><span class="sval" id="st-dis">0</span></div>
+  <div class="srow"><span>AVG SLEEP Q.</span><span class="sval" id="st-sq">—</span></div>
+  <div class="srow"><span>MEAN HR</span><span class="sval" id="st-hr">—</span></div>
+  <div style="display:flex;gap:5px;margin-top:7px">
+    <button type="button" class="btn" id="btn-mute" onclick="toggleMute()" style="margin:0">🔊 SOUND</button>
+  </div>
+  <div class="ptitle" style="margin-top:10px">EVENT LOG</div>
+  <div id="elog" class="elog" style="flex:1; overflow-y: auto;min-height: 0;">
+    <div class="eitem" style="color:rgba(120,168,200,.3)">No events recorded</div>
+  </div>
+  <div style="margin-top:auto;padding-top:9px;border-top:1px solid var(--border);width:100%;">
+    <div class="ptitle" style="margin:0 0 8px">BIOGEARS ENGINE</div>
+    <div class="srow"><span>MODE</span><span class="sval" id="bg-mode">—</span></div>
+    <div class="srow"><span>STATUS</span><span class="sval G" id="bg-status">CONNECTING</span></div>
+    <div class="srow"><span>SIGNALS</span><span class="sval">HR·MAP·SpO₂</span></div>
+    <div class="srow"><span>RUN ID</span><span class="sval" id="bg-cyc" style="font-size:8px;word-break:break-all">—</span></div>
+  </div>
+</div>
