@@ -338,6 +338,7 @@ def create_application() -> FastAPI:
         prefix="/api/health",
         tags=["health"]
     )
+    app.include_router(config.router)
     
     # =========================================================================
     # ROOT ENDPOINTS

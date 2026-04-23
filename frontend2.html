@@ -1297,48 +1297,45 @@ function _setRiskExplainLoading(loading) {
   }
 }
 
-let GROQ_API_KEY = '';
-const GROQ_MODEL  = 'llama-3.3-70b-versatile';
- 
-(async () => {
-  try {
-    const res = await fetch('/api/config');
-    if (!res.ok) throw new Error(`Config fetch failed: ${res.status}`);
-    const cfg = await res.json();
-    GROQ_API_KEY = cfg.groq_api_key;
-  } catch (err) {
-    console.error('Could not load runtime config:', err);
-  }
-})();
+
 // ── Central Groq caller ────────────────────────────────────────────────────
 // systemPrompt : string
 // messages     : [{role:'user'|'assistant', content:string}, ...]
 // maxTokens    : number  (optional, default 1000)
 // signal       : AbortSignal (optional)
+// ── Groq key — fetched once from backend, cached in memory ───────────────────
+// Your backend's GET /api/config already returns { groq_api_key: "..." }
+// so the key never has to be hard-coded in the HTML.
+let _groqApiKey = null;
+
+async function _getGroqKey() {
+  if (_groqApiKey) return _groqApiKey;
+  const res = await fetch(`${API_BASE}/api/config`);
+  if (!res.ok) throw new Error('Could not load runtime config from server');
+  const cfg = await res.json();
+  if (!cfg.groq_api_key) throw new Error('GROQ_API_KEY not configured on server');
+  _groqApiKey = cfg.groq_api_key;
+  return _groqApiKey;
+}
+
+// ── Central Groq caller (calls Groq directly — no backend proxy needed) ───────
+// systemPrompt : string
+// messages     : [{role:'user'|'assistant', content:string}, ...]
+// maxTokens    : number  (optional, default 1000)
+// signal       : AbortSignal (optional)
 async function _groqChat(systemPrompt, messages, maxTokens = 1000, signal) {
-  if (!GROQ_API_KEY) throw new Error('Groq API key not initialised yet.');
-  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+  const res = await fetch(`${API_BASE}/api/simulation/ai/chat`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${GROQ_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: GROQ_MODEL,
-      max_tokens: maxTokens,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        ...messages,
-      ],
-    }),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ system: systemPrompt, max_tokens: maxTokens, messages }),
     signal,
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err?.error?.message || `Groq error ${res.status}`);
+    throw new Error(err?.detail || `AI proxy error ${res.status}`);
   }
   const data = await res.json();
-  return data.choices?.[0]?.message?.content?.trim() || 'No response.';
+  return data.text || 'No response.';
 }
 
 function _riskContextPayload() {

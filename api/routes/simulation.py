@@ -49,11 +49,14 @@ from analytics.trend_analysis import compute_full_trend_report
 from analytics.monte_carlo import run_monte_carlo
 from core.probabilistic_models import ProbabilisticModels as PM
 
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
 # Configure logging
 logger = get_logger(__name__)
 
-router = APIRouter(tags=["simulation"])
-
+router = APIRouter(tags=["simulation"]) 
 # =============================================================================
 # PYDANTIC MODELS - These define the API contract with Person 3
 # =============================================================================
@@ -726,6 +729,19 @@ async def execute_simulation(
 # =============================================================================
 # AI CHAT PROXY — avoids CORS when calling Anthropic from the browser
 # =============================================================================
+# =============================================================================
+# REPLACE the entire @router.post("/ai/chat") block in api/routes/simulation.py
+# with the code below.
+#
+# Changes made:
+#   - Reads GROQ_API_KEY instead of ANTHROPIC_API_KEY
+#   - Calls https://api.groq.com/openai/v1/chat/completions (OpenAI-compatible)
+#   - Uses "Authorization: Bearer <key>" header (Groq standard)
+#   - Maps system prompt into the messages array (Groq doesn't use a top-level "system" field)
+#   - Extracts reply from OpenAI-style response shape
+# =============================================================================
+
+# ── Pydantic models (unchanged) ───────────────────────────────────────────────
 
 class AIChatMessage(BaseModel):
     role: str           # "user" or "assistant"
@@ -736,43 +752,51 @@ class AIChatRequest(BaseModel):
     system: Optional[str] = None
     max_tokens: int = 1000
 
+
+# ── Route ─────────────────────────────────────────────────────────────────────
+
 @router.post("/ai/chat")
 async def ai_chat_proxy(request: AIChatRequest):
     """
-    Proxy endpoint that forwards chat messages to Anthropic Claude.
-    Needed because browsers cannot call api.anthropic.com directly (CORS).
+    Proxy endpoint that forwards chat messages to Groq.
+    Needed because browsers cannot call api.groq.com directly (CORS).
     """
     import httpx
     import os
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    api_key = os.environ.get("GROQ_API_KEY", "")
     if not api_key:
-        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY not configured on server")
+        raise HTTPException(status_code=500, detail="GROQ_API_KEY not configured on server")
+
+    # Build the messages list — prepend system prompt if provided
+    messages = []
+    if request.system:
+        messages.append({"role": "system", "content": request.system})
+    messages.extend({"role": m.role, "content": m.content} for m in request.messages)
 
     payload = {
-        "model": "claude-sonnet-4-20250514",
+        "model": "llama-3.3-70b-versatile",   # fast & capable; swap to any Groq model you prefer
         "max_tokens": min(request.max_tokens, 2000),
-        "messages": [{"role": m.role, "content": m.content} for m in request.messages],
+        "messages": messages,
     }
-    if request.system:
-        payload["system"] = request.system
 
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(
-                "https://api.anthropic.com/v1/messages",
+                "https://api.groq.com/openai/v1/chat/completions",
                 headers={
-                    "x-api-key": api_key,
-                    "anthropic-version": "2023-06-01",
-                    "content-type": "application/json",
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
                 },
                 json=payload,
             )
         if not resp.is_success:
             raise HTTPException(status_code=resp.status_code, detail=resp.text)
+
         data = resp.json()
-        text = "".join(c.get("text", "") for c in data.get("content", []) if c.get("type") == "text")
+        text = data["choices"][0]["message"]["content"]
         return {"text": text}
+
     except httpx.TimeoutException:
         raise HTTPException(status_code=504, detail="AI request timed out")
     except HTTPException:
