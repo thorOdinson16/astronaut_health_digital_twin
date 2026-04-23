@@ -1,4 +1,3 @@
-
 """
 State Manager for Astronaut Digital Twin
 Maintains the evolving physiological state of the astronaut with history tracking.
@@ -91,7 +90,7 @@ class AstronautState:
         self.bounds = validation_bounds or StateBounds()
         
         # Initialize time array
-        self.time = np.arange(0, timesteps * dt_minutes, dt_minutes)
+        self.time = np.linspace(0, (timesteps - 1) * dt_minutes, timesteps)
         
         # Initialize state arrays with baseline values
         self.hr = np.full(timesteps, baseline_hr, dtype=np.float32)

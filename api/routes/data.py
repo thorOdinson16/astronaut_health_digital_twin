@@ -154,8 +154,8 @@ async def get_risk_trace(
 async def get_variable_trajectory(
     run_id: str,
     variable: str,
-    start_time: Optional[float] = Query(None, ge=0),
-    end_time: Optional[float] = Query(None, ge=0),
+    start_time: Optional[float] = Query(None, description="Start time filter (minutes)"),
+    end_time: Optional[float] = Query(None, description="End time filter (minutes)"),
     sim_manager: SimulationManager = Depends(get_simulation_manager)
 ):
     results = await sim_manager.get_results(run_id)
@@ -199,7 +199,11 @@ async def get_variable_trajectory(
 @router.get("/results/{run_id}/events")
 async def get_event_timeline(
     run_id: str,
-    event_type: Optional[str] = Query(None, pattern="^(motion_sickness|sleep_disruption)$"),
+    # ← UPDATED: exercise_stress added to the allowed pattern
+    event_type: Optional[str] = Query(
+        None,
+        pattern="^(motion_sickness|sleep_disruption|exercise_stress)$",
+    ),
     sim_manager: SimulationManager = Depends(get_simulation_manager)
 ):
     results = await sim_manager.get_results(run_id)
@@ -234,7 +238,8 @@ async def get_simulation_summary(
 
     summary = {
         "run_id": run_id,
-        "duration_hours": float(state['time'][-1]) / 60.0 if state['time'] else 0,        "metrics": {
+        "duration_hours": float(state['time'][-1]) / 60.0 if state['time'] else 0,
+        "metrics": {
             "heart_rate": {
                 "mean":        float(np.mean(state['hr'])),
                 "min":         float(np.min(state['hr'])),

@@ -22,6 +22,11 @@ NEW:       Onset probability is read directly from VestibularMismatchModel.p_ms_
            (these are observable, not ODE-derived), but now severity is
            modulated by k_adapt (slower adaptation → longer/worse episodes).
 
+FIX (v1.3):
+    apply_effect() no longer writes state.stress[t].  It returns "stress_delta"
+    so the main simulation loop can incorporate it into the stress formula,
+    following the same pattern as ExerciseStressEvent.
+
 References
 ----------
 Oman (1982) Acta Otolaryngol Suppl 392:44.
@@ -94,6 +99,19 @@ class MotionSicknessEvent(Event):
       - Sampling severity (amplified by adaptation suppression)
       - Sampling duration
       - Computing physiological effects on HR, stress, sleep quality
+
+    apply_effect() contract (v1.3):
+    --------------------------------
+    Returns a dict containing:
+      "stress_delta"     — additive stress increment for the main-loop formula.
+                           Does NOT write state.stress[t] directly — the main
+                           loop handles that via _collect_event_stress_deltas().
+      "sleep_delta"      — sleep quality degradation (written directly to
+                           state.sleep_quality[t], which is safe because the
+                           Borbély model only writes state.sleep_quality once
+                           per step and the event degrades it further).
+      "hr_applied"       — value written directly to state.hr[t] (safe: nothing
+                           overwrites HR after the scheduler runs).
     """
 
     def __init__(
@@ -213,7 +231,17 @@ class MotionSicknessEvent(Event):
         )
 
     def apply_effect(self, state: Any, t: int, dt_hours: float) -> Dict[str, Any]:
-        """Apply ongoing event effects to state at timestep t."""
+        """
+        Apply ongoing event effects to state at timestep t.
+
+        FIX (v1.3): Does NOT write state.stress[t] — returns "stress_delta"
+        for the main loop to fold into the stress formula, following the
+        same pattern as ExerciseStressEvent.
+
+        Writes state.hr[t], state.sleep_quality[t], and state.motion_severity[t]
+        directly — these are safe because nothing in the main loop overwrites
+        them after the scheduler runs.
+        """
         if getattr(self, "severity", None) is None:
             return {}
 
@@ -224,30 +252,32 @@ class MotionSicknessEvent(Event):
         sleep_quality_delta = float(immediate.get("sleep_quality_delta", 0.0))
         motion_severity = float(immediate.get("motion_severity", 0.0))
 
-        # HR: clamp to physiological bounds
+        # HR: clamp to physiological bounds — safe to write directly
         new_hr = float(np.clip(state.hr[t] + hr_delta * dt_hours, 40, 200))
-        # Stress: additive, clamped
-        new_stress = float(np.clip(state.stress[t] + stress_delta * dt_hours, 0, 0.95))
-        # Sleep quality: degradation
+        state.update(t, hr=new_hr)
+
+        # Sleep quality: degradation — safe to write directly
+        # (Borbély model writes once per step; the event degrades it further)
         new_sleep = float(
             np.clip(state.sleep_quality[t] + sleep_quality_delta * dt_hours, 0.05, 1.0)
         )
-        # Motion severity
+        state.update(t, sleep_quality=new_sleep)
+
+        # Motion severity — safe to write directly
         new_ms = float(np.clip(motion_severity, 0.0, 5.0))
+        state.update(t, motion_severity=new_ms)
 
-        state.update(
-            t,
-            hr=new_hr,
-            stress=new_stress,
-            sleep_quality=new_sleep,
-            motion_severity=new_ms,
-        )
-
+        # FIX (v1.3): return stress_delta for main loop — do NOT write state.stress[t]
+        # The main loop computes total_stress from the formula and calls
+        # state.update(t, stress=total_stress) after the scheduler returns,
+        # which would silently overwrite any write made here.
         return {
             "type": "motion_sickness_effect",
             "severity": float(self.severity),
             "hr_applied": new_hr,
-            "stress_applied": new_stress,
+            "sleep_quality_applied": new_sleep,
+            "motion_severity_applied": new_ms,
+            "stress_delta": stress_delta,  # ← returned, not written
         }
 
     # Legacy shim so EventScheduler can call check_triggers normally

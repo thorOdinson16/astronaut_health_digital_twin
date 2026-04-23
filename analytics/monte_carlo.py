@@ -48,9 +48,9 @@ def _run_single_trajectory(
     timesteps:              int,
     dt_hours:               float,
     baseline_hr:            float,
-    baseline_sleep_quality: float,    # used only for Borbély S_0 initialisation
+    baseline_sleep_quality: float,
     initial_fatigue:        float,
-    ms_lambda:              float,    # kept for API compatibility; onset now from ODE
+    ms_lambda:              float,
     fatigue_to_ms_threshold: float,
     fatigue_to_ms_prob_slope: float,
     risk_fatigue_threshold: float,
@@ -77,13 +77,15 @@ def _run_single_trajectory(
     rng = np.random.default_rng(seed)
 
     # ── Configure physics engine with per-run parameters ──────────────
+    # FIX: S_0 is not a field on BorbelyParameters — remove it from constructor.
+    # S_0 is only used inside BorbelyModel.reset(), called via engine.reset() below.
     borbely_p   = BorbelyParameters(
         tau_wake=run_tau_wake,
         tau_sleep=run_tau_sleep,
-        # S_0 derived from baseline_sleep_quality heuristic:
-        # good sleeper (sq=0.9) → S_0 low (0.20), poor sleeper → S_0 higher
-        S_0=float(np.clip(0.60 - baseline_sleep_quality * 0.40, 0.10, 0.55)),
     )
+    # Store S_0 separately for engine.reset()
+    S_0_init = float(np.clip(0.60 - baseline_sleep_quality * 0.40, 0.10, 0.55))
+    
     vestibular_p = VestibularParameters(
         k_adapt_0=run_k_adapt_0,
         w_s=run_w_s,
@@ -95,7 +97,7 @@ def _run_single_trajectory(
 
     engine = PhysicsEngine(borbely_p, vestibular_p, fatigue_p)
     engine.seed(seed)
-    engine.reset(initial_fatigue=initial_fatigue, S_0=borbely_p.S_0)
+    engine.reset(initial_fatigue=initial_fatigue, S_0=S_0_init)
 
     # ── Allocate arrays ────────────────────────────────────────────────
     time_hours       = np.arange(timesteps, dtype=np.float32) * dt_hours
@@ -133,20 +135,15 @@ def _run_single_trajectory(
         k_adapt_trace[t]   = phys["k_adapt"]
         cum_mismatch_tr[t] = phys["cumulative_mismatch"]
         sleep_quality[t]   = float(np.clip(phys["sleep_quality"], 0.05, 1.0))
-        if t > 0:
-            fatigue[t]     = float(np.clip(phys["fatigue"], 0.0, 10.0))
+        fatigue[t]     = float(np.clip(phys["fatigue"], 0.0, 10.0))
 
         # ── Motion sickness onset ──────────────────────────────────────
-        # Onset probability comes from the ODE (p_ms_step) rather than
-        # an empirical Poisson rate.  The Poisson roll is kept as the
-        # stochastic gate so runs remain comparable to the legacy model.
         p_onset = phys["p_ms_step"]
         if rng.random() < p_onset:
             sev = float(np.clip(rng.normal(0.55, 0.20), 0.15, 1.0))
             dur = float(np.clip(rng.normal(1.5, 0.5), 0.5, 4.0)) * sev
             ms_events.append({"t": t, "t_h": t_h, "sev": sev, "dur": dur})
             motion_sev[t] = sev
-            # HR: circadian baseline + vestibulo-cardiac reflex delta
             hr[t] = float(np.clip(hr[t] + phys["hr_delta"] * sev, 40, 200))
 
         # Keep active motion severity from ongoing events
@@ -178,6 +175,10 @@ def _run_single_trajectory(
     cum_fatigue = float(np.trapezoid(fatigue, dx=dt_hours))
 
     # ── Coupling diagnostics (counterfactual vs coupled) ───────────────
+    # FIX: VestibularParameters has `xi_ms`, NOT `ms_saturation`.
+    # `xi_ms` is the half-saturation constant in the sigmoid: 
+    #   σ · cum_mismatch / (ξ + cum_mismatch)
+    # The previous code referenced a non-existent `vestibular_p.ms_saturation`.
     coupling_analysis = CouplingDiagnostics.analyse(
         fatigue_trace              = fatigue.tolist(),
         cumulative_mismatch_trace  = cum_mismatch_tr.tolist(),
@@ -186,7 +187,7 @@ def _run_single_trajectory(
         dt_hours                   = dt_hours,
         risk_fatigue_threshold     = risk_fatigue_threshold,
         sigma_ms                   = vestibular_p.sigma_ms,
-        ms_saturation              = vestibular_p.ms_saturation,
+        ms_saturation              = vestibular_p.xi_ms,     # ← FIXED
         k_adapt_0                  = run_k_adapt_0,
         w_s                        = run_w_s,
     )
@@ -203,13 +204,13 @@ def _run_single_trajectory(
         "mean_hr":                 float(np.mean(hr)),
         "peak_hr":                 float(np.max(hr)),
         "mean_sleep_quality":      float(np.mean(sleep_quality)),
-        # Physics-specific scalars (new for paper)
+        # Physics-specific scalars
         "mean_mismatch":           float(np.mean(np.abs(mismatch_trace))),
         "peak_mismatch":           float(np.max(np.abs(mismatch_trace))),
         "final_cum_mismatch":      float(cum_mismatch_tr[-1]),
         "mean_k_adapt":            float(np.mean(k_adapt_trace)),
         "mean_k_suppress":         float(coupling_analysis["mean_k_suppress"]),
-        # Coupling excess risk (key result for paper)
+        # Coupling excess risk
         "excess_p_ms":             coupling_analysis["mean_excess_p_ms"],
         "joint_risk_excess":       coupling_analysis["joint_risk_excess_fraction"],
         # Time-series arrays for envelope plots
@@ -237,11 +238,11 @@ def run_monte_carlo(
     baseline_hr:             float = 75.0,
     baseline_sleep_quality:  float = 0.80,
     initial_fatigue:         float = 0.0,
-    ms_lambda:               float = 0.03,    # legacy param, kept for API compat
+    ms_lambda:               float = 0.03,
     alpha_sleep:             float = 0.28,
     beta_motion:             float = 0.42,
     gamma_recovery:          float = 0.14,
-    recovery_threshold:      float = 0.55,    # legacy param, kept for API compat
+    recovery_threshold:      float = 0.55,
     fatigue_to_ms_threshold: float = 3.0,
     fatigue_to_ms_prob_slope: float = 0.05,
     risk_fatigue_threshold:  float = 5.0,
@@ -402,7 +403,6 @@ def run_monte_carlo(
             "mean_cumulative_fatigue":   float(np.mean(cum_fatigues)),
         },
 
-        # ── Novel outputs: coupling excess risk ────────────────────────
         "coupling_summary": {
             "mean_excess_p_ms":          float(np.mean(excess_p_ms_arr)),
             "p95_excess_p_ms":           float(np.percentile(excess_p_ms_arr, 95)),
@@ -428,14 +428,12 @@ def run_monte_carlo(
 
         "envelopes": {
             "time_hours":     time_axis,
-            # Existing state variables
             "fatigue_mean":   fat_env["mean"],
             "fatigue_std":    fat_env["std"],
             "fatigue_max":    fat_env["max"],
             "fatigue_min":    fat_env["min"],
             "sleep_mean":     slp_env["mean"],
             "sleep_std":      slp_env["std"],
-            # Novel ODE state envelopes (new for paper figures)
             "S_mean":         S_env["mean"],
             "S_std":          S_env["std"],
             "C_mean":         C_env["mean"],
@@ -443,7 +441,6 @@ def run_monte_carlo(
             "mismatch_std":   mis_env["std"],
             "k_adapt_mean":   ka_env["mean"],
             "k_adapt_std":    ka_env["std"],
-            # Coupling excess risk envelopes
             "p_ms_coupled_mean":      pms_c_env["mean"],
             "p_ms_coupled_std":       pms_c_env["std"],
             "p_ms_independent_mean":  pms_i_env["mean"],

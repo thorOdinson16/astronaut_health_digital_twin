@@ -27,13 +27,13 @@ from core.probabilistic_models import ProbabilisticModels
 from core.fatigue_model import (
     FatigueModel,
     FatigueParameters,
-    PhysicsEngine,  # ← ADDED
-    BorbelyParameters,  # ← ADDED
-    VestibularParameters,  # ← ADDED
+    PhysicsEngine,
+    BorbelyParameters,
+    VestibularParameters,
 )
 from core.coupling_engine import (
     CouplingEngine,
-    CouplingDiagnostics,  # ← ADDED
+    CouplingDiagnostics,
 )
 from events.event_scheduler import EventScheduler
 from events.motion_sickness_event import MotionSicknessEvent, MotionSicknessParameters
@@ -41,6 +41,7 @@ from events.sleep_disruption_event import (
     SleepDisruptionEvent,
     SleepDisruptionParameters,
 )
+from events.exercise_stress_event import ExerciseStressEvent, ExerciseStressParameters
 from biogears.biogears_adapter import BioGearsAdapter
 from utils.logger import get_logger
 from api.dependencies import get_simulation_manager, SimulationManager
@@ -56,7 +57,8 @@ load_dotenv()
 # Configure logging
 logger = get_logger(__name__)
 
-router = APIRouter(tags=["simulation"]) 
+router = APIRouter(tags=["simulation"])
+
 # =============================================================================
 # PYDANTIC MODELS - These define the API contract with Person 3
 # =============================================================================
@@ -95,12 +97,16 @@ class SimulationConfig(BaseModel):
     num_astronauts: int = Field(
         1, description="Number of astronauts to simulate (1-5)", ge=1, le=5
     )
+
     # Event enablement
     enable_motion_sickness: bool = Field(
         True, description="Enable motion sickness events"
     )
     enable_sleep_disruption: bool = Field(
         True, description="Enable sleep disruption events"
+    )
+    enable_exercise_stress: bool = Field(
+        True, description="Enable EVA/exercise stress events"
     )
 
     # BioGears integration
@@ -131,6 +137,7 @@ class SimulationConfig(BaseModel):
                 "baseline_hr": 72,
                 "baseline_sleep_quality": 0.85,
                 "enable_motion_sickness": True,
+                "enable_exercise_stress": True,
                 "use_biogears": True,
             }
         }
@@ -154,7 +161,6 @@ class SimulationResponse(BaseModel):
     created_at: datetime = Field(default_factory=datetime.now)
 
 
-# AFTER
 class SimulationStatus(BaseModel):
     run_id: str
     status: str
@@ -467,10 +473,12 @@ async def execute_simulation(
                 initial_fatigue=config.initial_fatigue,
             )
 
-            # ── Physics engine (replaces FatigueModel + raw Poisson MS) ─
+            # ── Physics engine ─────────────────────────────────────────
+            # FIX: S_0 is not a field on BorbelyParameters — it's passed
+            # to engine.reset() below.  Remove it from the constructor call.
             engine = PhysicsEngine(
                 borbely_params=BorbelyParameters(
-                    tau_wake=tau_wake, tau_sleep=tau_sleep, S_0=S_0
+                    tau_wake=tau_wake, tau_sleep=tau_sleep
                 ),
                 vestibular_params=VestibularParameters(k_adapt_0=k_adapt, w_s=w_s),
                 fatigue_params=FatigueParameters(),
@@ -479,7 +487,19 @@ async def execute_simulation(
             engine.reset(initial_fatigue=config.initial_fatigue, S_0=S_0)
 
             coupling_engine = CouplingEngine(k_adapt_0=k_adapt, w_s=w_s)
-            scheduler = EventScheduler()
+            # Wire SimulationConfig enable_* flags to the scheduler so they
+            # actually take effect (previously the flags existed in config but
+            # were never read by the scheduler).
+            _disabled_events = []
+            if not config.enable_motion_sickness:
+                _disabled_events.append("motion_sickness")
+            if not config.enable_sleep_disruption:
+                _disabled_events.append("sleep_disruption")
+            if not config.enable_exercise_stress:
+                _disabled_events.append("exercise_stress")
+            scheduler = EventScheduler(
+                config={"disabled_event_types": _disabled_events}
+            )
 
             # ── Extra arrays for novel ODE states ─────────────────────
             S_arr = np.zeros(timesteps, dtype=np.float32)
@@ -508,77 +528,103 @@ async def execute_simulation(
                     )
 
                 t_h = float(state.time[t]) / 60.0  # minutes → hours
-
-                # ── Physics step ───────────────────────────────────────
-                phys = engine.step(dt_hours=dt_hours, t_h=t_h, sensory_input=1.0)
-
+ 
+                # ── FIX 1: collect EVA forcing BEFORE physics step ────────
+                # get_active_eva_contributions() reads effect.immediate from
+                # all currently active ExerciseStressEvents.  It must run
+                # before engine.step() so the forcing is included in this
+                # step's ODE integration, not the next one.
+                eva = scheduler.get_active_eva_contributions()
+ 
+                # ── Physics step ───────────────────────────────────────────
+                # FIX 1: pass fatigue_forcing into the ODE so ExerciseStress
+                # acceleration is permanently visible in FatigueModel._fatigue_state
+                # and survives across timesteps (instead of being written to
+                # state.fatigue[t] and overwritten immediately next step).
+                phys = engine.step(
+                    dt_hours=dt_hours,
+                    t_h=t_h,
+                    sensory_input=1.0,
+                    fatigue_forcing=eva["fatigue_forcing"],
+                )
+ 
                 # Store novel ODE states
-                S_arr[t] = phys["S"]
-                C_arr[t] = phys["C"]
+                S_arr[t]        = phys["S"]
+                C_arr[t]        = phys["C"]
                 mismatch_arr[t] = phys["mismatch"]
-                k_adapt_arr[t] = phys["k_adapt"]
-                cum_mis_arr[t] = phys["cumulative_mismatch"]
-
+                k_adapt_arr[t]  = phys["k_adapt"]
+                cum_mis_arr[t]  = phys["cumulative_mismatch"]
+ 
                 # Update physics-derived state variables
                 state.update(
                     t, sleep_quality=float(np.clip(phys["sleep_quality"], 0.05, 1.0))
                 )
-                if t > 0:
-                    state.update(t, fatigue=float(np.clip(phys["fatigue"], 0.0, 10.0)))
-
+                state.update(t, fatigue=float(np.clip(phys["fatigue"], 0.0, 10.0)))
+ 
                 # HR: add vestibulo-cardiac reflex delta from physics
                 state.hr[t] = float(
                     np.clip(
-                        state.hr[t]
-                        + phys["hr_delta"] * 0.1,  # partial per-step contribution
+                        state.hr[t] + phys["hr_delta"] * 0.1,
                         40,
                         200,
                     )
                 )
-
-                # ── Coupling diagnostics ───────────────────────────────
+ 
+                # ── Coupling diagnostics ───────────────────────────────────
                 coupling_out = coupling_engine.update(phys, dt_hours)
-
-                # ── Event scheduler  (MS onset from ODE p_ms_step) ────
-                # Inject physics outputs into coupling_effects so
-                # MotionSicknessEvent.sample_onset() receives them.
+ 
+                # ── Event scheduler ────────────────────────────────────────
                 coupling_effects = {
                     "motion_sickness": {
-                        "p_ms_step": phys["p_ms_step"],
-                        "k_suppress": coupling_out["k_suppress"],
-                        "k_adapt": phys["k_adapt"],
-                        "fatigue_multiplier": 1.0,  # legacy field, unused now
+                        "p_ms_step":         phys["p_ms_step"],
+                        "k_suppress":        coupling_out["k_suppress"],
+                        "k_adapt":           phys["k_adapt"],
+                        "fatigue_multiplier": 1.0,
                     }
                 }
-
+ 
                 event_summary = scheduler.process_time_step(
                     state=state,
                     t=t,
                     dt_hours=dt_hours,
                     coupling_effects=coupling_effects,
                 )
-
-                # ── Stress (circadian + fatigue + motion severity) ─────
+ 
+                # ── Stress formula ─────────────────────────────────────────
+                # FIX 2: collect ALL event stress contributions (not just EVA).
+                # This replaces the old EVA-only helper with a general-purpose
+                # collector so that MotionSicknessEvent stress_delta is also
+                # included and not silently overwritten.
+                total_event_stress_delta = _collect_event_stress_deltas(
+                    scheduler, event_summary
+                )
+ 
                 current_fat = float(state.fatigue[t])
-                mot_sev = float(state.motion_severity[t])
+                mot_sev     = float(state.motion_severity[t])
                 circadian_stress = 0.08 + 0.06 * math.sin(
                     2 * math.pi * (t_h % 24) / 24.0 - math.pi / 2
                 )
+                # FIX 2: add total_event_stress_delta so that stress from
+                # MotionSicknessEvent and ExerciseStressEvent is not
+                # silently overwritten by this formula.
                 total_stress = float(
                     np.clip(
                         0.12
                         + circadian_stress
                         + min(0.45, current_fat / 10.0 * 0.60)
-                        + min(0.50, mot_sev * 0.70),
+                        + total_event_stress_delta,
                         0.0,
                         0.95,
                     )
                 )
                 state.update(t, stress=total_stress)
 
-                # ── BioGears (unchanged) ───────────────────────────────
+                # ── BioGears ───────────────────────────────────────────
                 if config.use_biogears and biogears:
+
+                    # ── 1. Event-driven perturbations ──────────────────
                     for event in event_summary.get("new_events", []):
+
                         if event["type"] == "MotionSicknessEvent":
                             perturbation = {
                                 "type": "motion_sickness",
@@ -592,7 +638,9 @@ async def execute_simulation(
                             bio_response = await biogears.run_perturbation_async(
                                 perturbation
                             )
-                            await sim_manager.update_status(run_id, "running", progress=progress)
+                            await sim_manager.update_status(
+                                run_id, "running", progress=progress
+                            )
                             if bio_response:
                                 state.update(
                                     t,
@@ -601,6 +649,98 @@ async def execute_simulation(
                                         160.0,
                                     ),
                                 )
+
+                        elif event["type"] == "SleepDisruptionEvent":
+                            perturbation = {
+                                "type": "sleep_deprivation",
+                                "duration_minutes": event.get("duration", 6.0) * 60,
+                                "baseline_hr": config.baseline_hr + hr_offset,
+                                "fatigue_level": float(state.fatigue[t - 1])
+                                if t > 0
+                                else 0.0,
+                            }
+                            bio_response = await biogears.run_perturbation_async(
+                                perturbation
+                            )
+                            await sim_manager.update_status(
+                                run_id, "running", progress=progress
+                            )
+                            if bio_response:
+                                state.update(
+                                    t,
+                                    hr=min(
+                                        float(bio_response.get("hr", state.hr[t])),
+                                        160.0,
+                                    ),
+                                )
+
+                        elif event["type"] == "ExerciseStressEvent":
+                            perturbation = {
+                                "type": "stress",
+                                "exercise_intensity": event.get(
+                                    "metadata", {}
+                                ).get("intensity", 0.5),
+                                "duration_minutes": event.get("duration", 1.0) * 60,
+                                "baseline_hr": config.baseline_hr + hr_offset,
+                                "fatigue_level": float(state.fatigue[t - 1])
+                                if t > 0
+                                else 0.0,
+                            }
+                            bio_response = await biogears.run_perturbation_async(
+                                perturbation
+                            )
+                            await sim_manager.update_status(
+                                run_id, "running", progress=progress
+                            )
+                            if bio_response:
+                                state.update(
+                                    t,
+                                    hr=min(
+                                        float(bio_response.get("hr", state.hr[t])),
+                                        180.0,
+                                    ),
+                                    stress=min(
+                                        float(
+                                            bio_response.get("stress", state.stress[t])
+                                        ),
+                                        0.95,
+                                    ),
+                                )
+
+                    # ── 2. Chronic-stress call at high-fatigue threshold ─
+                    if (
+                        t > 0
+                        and float(state.fatigue[t]) >= 6.0
+                        and float(state.fatigue[t - 1]) < 6.0
+                    ):
+                        perturbation = {
+                            "type": "stress",
+                            "exercise_intensity": 0.3,
+                            "duration_minutes": 10.0,
+                            "baseline_hr": config.baseline_hr + hr_offset,
+                            "fatigue_level": float(state.fatigue[t]),
+                        }
+                        bio_response = await biogears.run_perturbation_async(
+                            perturbation
+                        )
+                        logger.info(
+                            f"Astronaut {astro_idx}: chronic-stress BioGears call "
+                            f"at t={t} (fatigue={state.fatigue[t]:.2f})"
+                        )
+                        if bio_response:
+                            state.update(
+                                t,
+                                hr=min(
+                                    float(bio_response.get("hr", state.hr[t])),
+                                    160.0,
+                                ),
+                                stress=min(
+                                    float(
+                                        bio_response.get("stress", state.stress[t])
+                                    ),
+                                    0.95,
+                                ),
+                            )
 
             # ── Per-astronaut analytics ────────────────────────────────
             state_dict = state.to_dict()
@@ -727,22 +867,67 @@ async def execute_simulation(
         await sim_manager.update_status(run_id, "failed", error_message=str(e))
         raise
 
+
 # =============================================================================
-# AI CHAT PROXY — avoids CORS when calling Anthropic from the browser
-# =============================================================================
-# =============================================================================
-# REPLACE the entire @router.post("/ai/chat") block in api/routes/simulation.py
-# with the code below.
-#
-# Changes made:
-#   - Reads GROQ_API_KEY instead of ANTHROPIC_API_KEY
-#   - Calls https://api.groq.com/openai/v1/chat/completions (OpenAI-compatible)
-#   - Uses "Authorization: Bearer <key>" header (Groq standard)
-#   - Maps system prompt into the messages array (Groq doesn't use a top-level "system" field)
-#   - Extracts reply from OpenAI-style response shape
+# HELPER: collect ALL event stress deltas (not just EVA)
 # =============================================================================
 
-# ── Pydantic models (unchanged) ───────────────────────────────────────────────
+def _collect_event_stress_deltas(
+    scheduler: EventScheduler,
+    event_summary: Dict[str, Any],
+) -> float:
+    """
+    Aggregate stress_delta from ALL currently active events that return it
+    from apply_effect(), plus any newly triggered events in this step.
+
+    This replaces the EVA-only `get_active_eva_contributions()` for stress
+    so that MotionSicknessEvent's stress contribution is also honoured and
+    not silently overwritten by the formula.
+
+    Args:
+        scheduler:      EventScheduler instance
+        event_summary:  Dict returned by scheduler.process_time_step()
+
+    Returns:
+        Total additive stress_delta from all active events.
+    """
+    total = 0.0
+
+    # ── 1. Active events that returned "stress_delta" in their effect dict ──
+    for effect_dict in event_summary.get("effects", []):
+        if isinstance(effect_dict, dict):
+            total += float(effect_dict.get("stress_delta", 0.0))
+
+    # ── 2. Newly triggered events that have an EventEffect with stress_delta ──
+    for ev_dict in event_summary.get("new_events", []):
+        # New events carry their severity/metadata in the dict but have not
+        # yet had apply_effect() called.  The stress contribution for the
+        # onset step comes from their EventEffect.immediate if the event
+        # stores one.  We look for the key in metadata or an embedded effect.
+        meta = ev_dict.get("metadata", {})
+        total += float(meta.get("stress_delta", 0.0))
+
+    # ── 3. Fallback: also check active events via the scheduler helper ──
+    eva_contrib = scheduler.get_active_eva_contributions()
+    # We add eva stress_delta only if it wasn't already counted via
+    # the effects list (to avoid double-counting).  Since
+    # process_time_step() already called apply_effect() on all active
+    # events and returned their effect dicts, most contributions are
+    # already in step 1.  The scheduler helper is a safety net.
+    # We take the max to avoid double-counting.
+    already_have_eva = any(
+        isinstance(e, dict) and e.get("type") == "exercise_stress_effect"
+        for e in event_summary.get("effects", [])
+    )
+    if not already_have_eva:
+        total += eva_contrib.get("stress_delta", 0.0)
+
+    return total
+
+
+# =============================================================================
+# AI CHAT PROXY — avoids CORS when calling Groq from the browser
+# =============================================================================
 
 class AIChatMessage(BaseModel):
     role: str           # "user" or "assistant"
@@ -753,8 +938,6 @@ class AIChatRequest(BaseModel):
     system: Optional[str] = None
     max_tokens: int = 1000
 
-
-# ── Route ─────────────────────────────────────────────────────────────────────
 
 @router.post("/ai/chat")
 async def ai_chat_proxy(request: AIChatRequest):
@@ -769,14 +952,13 @@ async def ai_chat_proxy(request: AIChatRequest):
     if not api_key:
         raise HTTPException(status_code=500, detail="GROQ_API_KEY not configured on server")
 
-    # Build the messages list — prepend system prompt if provided
     messages = []
     if request.system:
         messages.append({"role": "system", "content": request.system})
     messages.extend({"role": m.role, "content": m.content} for m in request.messages)
 
     payload = {
-        "model": "llama-3.3-70b-versatile",   # fast & capable; swap to any Groq model you prefer
+        "model": "llama-3.3-70b-versatile",
         "max_tokens": min(request.max_tokens, 2000),
         "messages": messages,
     }
