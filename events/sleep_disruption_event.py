@@ -3,8 +3,24 @@ events/sleep_disruption_event.py
 
 Sleep Disruption Event Module.
 
-FIX (v1.2): SleepDisruptionParameters.validate() now asserts refractory_hours > 0,
-consistent with the validation pattern used by the other two event parameter classes.
+BioGears integration (v1.3):
+    get_biogears_perturbation() now returns type="sleep_deprivation" with
+    duration_minutes equal to the event's disrupted sleep window.
+
+    In scenario_runner._build_actions(), "sleep_deprivation" triggers:
+        SleepData On → AdvanceTime → SleepData Off
+        → PatientAssessmentRequestData Type="PsychomotorVigilanceTask"
+
+    The PVT is NASA's standard ISS cognitive impairment metric.
+    The adapter returns bio_response["pvt_score"] ∈ [0,1] where:
+        0.0 = no impairment (full sleep achieved)
+        1.0 = maximal impairment (no sleep)
+
+    The simulation loop should write pvt_score into the fatigue ODE as
+    additional forcing when it is available, or log it as a diagnostic.
+
+FIX (v1.2):
+    SleepDisruptionParameters.validate() now asserts refractory_hours > 0.
 """
 
 import numpy as np
@@ -27,7 +43,7 @@ class SleepDisruptionParameters:
     motion_severity_threshold:  float = 1.5
 
     # Probability parameters
-    base_probability:   float = 0.1
+    base_probability:    float = 0.1
     fatigue_sensitivity: float = 0.15
     ms_sensitivity:      float = 0.2
 
@@ -37,7 +53,7 @@ class SleepDisruptionParameters:
     min_severity:  float = 0.2
     max_severity:  float = 1.0
 
-    # Duration parameters
+    # Duration parameters (hours of disrupted sleep)
     min_duration: float = 2.0
     max_duration: float = 8.0
 
@@ -49,7 +65,7 @@ class SleepDisruptionParameters:
     recovery_sleep_needed:  float = 1.5
     next_day_effect_decay:  float = 0.7
 
-    # FIX: refractory period — one disruption per sleep night maximum.
+    # One disruption per sleep night maximum
     refractory_hours: float = 8.0
 
     def validate(self):
@@ -58,7 +74,6 @@ class SleepDisruptionParameters:
         assert 0 <= self.base_probability <= 1
         assert 0 <= self.min_severity <= self.max_severity <= 1
         assert self.min_duration <= self.max_duration
-        # FIX: validate the refractory_hours field (was missing in previous revision)
         assert self.refractory_hours > 0, "refractory_hours must be positive"
 
 
@@ -76,6 +91,11 @@ class SleepDisruptionEvent(Event):
     - At most one disruption per sleep night (refractory guard)
     - Reduces sleep quality and duration
     - Creates positive feedback (disruption → more fatigue)
+
+    BioGears integration (v1.3):
+    - get_biogears_perturbation() returns type="sleep_deprivation"
+    - BioGears runs SleepData On/Off + PVT assessment
+    - Caller can read bio_response["pvt_score"] for cognitive impairment logging
     """
 
     def __init__(
@@ -90,6 +110,9 @@ class SleepDisruptionEvent(Event):
         self.sleep_debt:        float = 0.0
         self.disrupted_hours:   float = 0.0
         self.recovery_achieved: bool  = False
+
+        # Stores PVT result from BioGears for external consumption
+        self.last_pvt_score: float = 0.0
 
         logger.debug(f"Created SleepDisruptionEvent with params: {self.params}")
 
@@ -108,7 +131,6 @@ class SleepDisruptionEvent(Event):
             t:               Current time index
             last_event_time: Simulation-time (hours) of the previous sleep
                              disruption onset, supplied by EventScheduler.
-            **kwargs:        Absorbs dt_hours etc. silently.
         """
         mission_time_hours = t * (getattr(state, "dt", 5.0) / 60.0)
         hour_of_day = mission_time_hours % 24
@@ -123,7 +145,7 @@ class SleepDisruptionEvent(Event):
         if time_since_last < self.params.refractory_hours:
             return False, None
 
-        fatigue        = state.fatigue[t]        if t < len(state.fatigue)        else 0
+        fatigue         = state.fatigue[t]         if t < len(state.fatigue)         else 0
         motion_severity = state.motion_severity[t] if t < len(state.motion_severity) else 0
 
         onset_prob = self.params.base_probability
@@ -144,11 +166,11 @@ class SleepDisruptionEvent(Event):
             onset_prob = 1.0
 
         self.trigger_conditions = {
-            "mission_time":   mission_time_hours,
-            "hour_of_day":    hour_of_day,
-            "fatigue":        fatigue,
+            "mission_time":    mission_time_hours,
+            "hour_of_day":     hour_of_day,
+            "fatigue":         fatigue,
             "motion_severity": motion_severity,
-            "onset_prob":     onset_prob,
+            "onset_prob":      onset_prob,
         }
 
         should_occur = np.random.random() < onset_prob
@@ -181,9 +203,9 @@ class SleepDisruptionEvent(Event):
 
         return EventEffect(
             immediate={
-                "sleep_quality":        -quality_reduction,
+                "sleep_quality":         -quality_reduction,
                 "effective_sleep_hours": -duration_reduction * 8.0,
-                "sleep_debt":            duration_reduction * 8.0,
+                "sleep_debt":             duration_reduction * 8.0,
             },
             duration_hours=self.duration,
             delayed={
@@ -205,29 +227,49 @@ class SleepDisruptionEvent(Event):
         self.disrupted_hours += dt_hours
 
         current_sleep_quality = state.sleep_quality[t - 1] if t > 0 else 0.8
-        current_fatigue       = state.fatigue[t - 1]       if t > 0 else 0
-
-        effect_strength = 1.0
-
-        quality_effect = (
-            self.effect.immediate.get("sleep_quality", 0) * effect_strength
-        )
+        quality_effect = self.effect.immediate.get("sleep_quality", 0)
 
         new_sleep_quality = float(np.clip(
             current_sleep_quality + quality_effect * dt_hours,
             0.05, 1.0,
         ))
 
-        # Sleep quality write: BorbelyModel has already written state.sleep_quality[t]
-        # this step; the event degrades it further.  This is the correct ordering
-        # (see evaluation report — no overwrite problem here).
         state.update(t, sleep_quality=new_sleep_quality)
 
         return {
-            "type":                "sleep_disruption_effect",
-            "severity":            float(self.severity) if hasattr(self, "severity") else 0.0,
-            "progress":            progress,
-            "disrupted_hours":     self.disrupted_hours,
-            "quality_applied":     new_sleep_quality,
-            "effect_strength":     effect_strength,
+            "type":              "sleep_disruption_effect",
+            "severity":          float(self.severity) if hasattr(self, "severity") else 0.0,
+            "progress":          progress,
+            "disrupted_hours":   self.disrupted_hours,
+            "quality_applied":   new_sleep_quality,
+            "pvt_score":         self.last_pvt_score,
         }
+
+    def get_biogears_perturbation(self) -> Dict[str, Any]:
+        """
+        Return perturbation dict for BioGears adapter.
+
+        Routes to SleepData On/Off + PatientAssessmentRequestData PsychomotorVigilanceTask
+        in scenario_runner._build_actions().
+
+        duration_minutes is the disrupted sleep window duration.
+        The adapter will return bio_response["pvt_score"] which can be stored
+        in self.last_pvt_score by the simulation loop for diagnostic logging.
+        """
+        disrupted_minutes = (self.duration or 2.0) * 60.0
+        return {
+            "type":             "sleep_deprivation",
+            "duration_minutes": disrupted_minutes,
+        }
+
+    def record_pvt_score(self, pvt_score: float) -> None:
+        """
+        Called by the simulation loop after BioGears returns bio_response.
+        Stores the PVT neurocognitive impairment score for this disruption event.
+
+        Usage in simulation loop:
+            bio_response = await adapter.run_perturbation_async(perturbation)
+            sleep_event.record_pvt_score(bio_response.get("pvt_score", 0.0))
+        """
+        self.last_pvt_score = float(np.clip(pvt_score, 0.0, 1.0))
+        logger.info(f"Sleep disruption PVT score recorded: {self.last_pvt_score:.3f}")

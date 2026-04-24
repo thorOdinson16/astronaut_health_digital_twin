@@ -6,6 +6,11 @@ Responsible for:
   - Executing bg-cli via subprocess
   - Managing temp scenario files and output paths
   - Returning raw CSV path for output_parser to consume
+
+Action mapping (v1.3):
+  motion_sickness  → AcuteStressData        (fight-or-flight / vestibulo-autonomic response)
+  exercise / EVA   → ExerciseData            (GenericExercise with Intensity)
+  sleep_deprivation→ SleepData On→advance→Off + PatientAssessmentRequestData PsychomotorVigilanceTask
 """
 
 import subprocess
@@ -32,23 +37,23 @@ class BioGearsStressor:
     Represents a physiological stressor to inject into a BioGears scenario.
     Built by the adapter from digital twin event data.
     """
-    stressor_type: str               # "motion_sickness" | "sleep_deprivation" | "stress"
+    stressor_type: str                # "motion_sickness" | "sleep_deprivation" | "stress"
     duration_minutes: float = 10.0
-    nausea_severity: float  = 0.3    # [0-1] — used for motion_sickness severity
-    exercise_intensity: float = 0.0  # [0-1] — used for stress severity
+    nausea_severity: float  = 0.3     # [0-1] — used for motion_sickness severity
+    exercise_intensity: float = 0.0   # [0-1] — used for ExerciseData Intensity
     patient_file: str = "StandardMale.xml"
     output_frequency_seconds: float = 1.0
 
     # (name, unit, xsi:type) triples — confirmed against shipped scenario files
     data_requests: list = field(default_factory=lambda: [
-        ("HeartRate",                "1/min",    "PhysiologyDataRequestData"),
-        ("MeanArterialPressure",      "mmHg",     "PhysiologyDataRequestData"),
-        ("SystolicArterialPressure",  "mmHg",     "PhysiologyDataRequestData"),
-        ("DiastolicArterialPressure", "mmHg",     "PhysiologyDataRequestData"),
-        ("OxygenSaturation",          "unitless", "PhysiologyDataRequestData"),
-        ("RespirationRate",           "1/min",    "PhysiologyDataRequestData"),
-        ("TidalVolume",               "mL",       "PhysiologyDataRequestData"),
-        ("CoreTemperature",           "degC",     "PhysiologyDataRequestData"),
+        ("HeartRate",                 "1/min",    "PhysiologyDataRequestData"),
+        ("MeanArterialPressure",       "mmHg",     "PhysiologyDataRequestData"),
+        ("SystolicArterialPressure",   "mmHg",     "PhysiologyDataRequestData"),
+        ("DiastolicArterialPressure",  "mmHg",     "PhysiologyDataRequestData"),
+        ("OxygenSaturation",           "unitless", "PhysiologyDataRequestData"),
+        ("RespirationRate",            "1/min",    "PhysiologyDataRequestData"),
+        ("TidalVolume",                "mL",       "PhysiologyDataRequestData"),
+        ("CoreTemperature",            "degC",     "PhysiologyDataRequestData"),
     ])
 
 
@@ -71,11 +76,9 @@ class BioGearsScenarioRunner:
         self.bg_cli_path = Path(bg_cli_path)
         self.bg_cli_exe  = self.bg_cli_path / "bg-cli.exe"
 
-        # FIX: working_dir must be bg_cli_path (the bin/ folder itself).
-        # The BioGears install puts everything — states/, xsd/, Scenarios/ —
-        # INSIDE bin/, not in the parent. bg-cli resolves all relative paths
-        # (states/StandardMale@0s.xml, xsd/BioGearsDataModel.xsd) from its cwd,
-        # which must be bin/.
+        # working_dir must be bg_cli_path (the bin/ folder itself).
+        # BioGears resolves all relative paths (states/, xsd/, Scenarios/)
+        # from its cwd, which must be bin/.
         self.working_dir = Path(working_dir) if working_dir else self.bg_cli_path
         self.timeout = timeout_seconds
         self.working_dir.mkdir(parents=True, exist_ok=True)
@@ -90,7 +93,6 @@ class BioGearsScenarioRunner:
             self._mock_mode = False
             logger.info(f"BioGearsScenarioRunner ready. CLI: {self.bg_cli_exe}")
 
-        # Check if the XSD is present — it controls whether we need a namespace
         self._xsd_path = self.working_dir / "xsd" / "BioGearsDataModel.xsd"
         if self._xsd_path.exists():
             logger.warning(
@@ -125,7 +127,7 @@ class BioGearsScenarioRunner:
 
         try:
             result = subprocess.run(
-                [str(self.bg_cli_exe), "Scenario", xml_path.name],  # ← relative name only
+                [str(self.bg_cli_exe), "Scenario", xml_path.name],
                 capture_output=True,
                 text=True,
                 timeout=self.timeout,
@@ -140,7 +142,6 @@ class BioGearsScenarioRunner:
         combined_output = result.stdout + result.stderr
         logger.info(f"bg-cli full output:\n{combined_output}")
 
-        # Detect XSD validation failure specifically — actionable error message
         if "no declaration found for element" in combined_output:
             raise RuntimeError(
                 f"BioGears XSD validation failed — the schema is rejecting our XML.\n"
@@ -189,13 +190,8 @@ class BioGearsScenarioRunner:
     def _find_output_csv(self, scenario_name: str, launch_time: float, xml_path: Path = None) -> Optional[Path]:
         """
         Locate the Results CSV that bg-cli wrote.
-
         BioGears writes to: <working_dir>/Scenarios/<ScenarioName>Results.csv
-        where <ScenarioName> is the value of the <n> element in the XML.
         """
-        # BioGears names the CSV after the <n> tag in the XML, NOT the xml filename.
-        # e.g. <n>AstronautTwin_motion_sickness_abc123</n> → Scenarios/AstronautTwin_motion_sickness_abc123Results.csv
-        # Also check xml_stem as a fallback (some BioGears versions use the filename).
         stems_to_check = [scenario_name]
         if xml_path is not None:
             stems_to_check.append(xml_path.stem)
@@ -203,7 +199,7 @@ class BioGearsScenarioRunner:
         for stem in stems_to_check:
             csv_name = f"{stem}Results.csv"
             candidates = [
-                self.working_dir / "Scenarios" / csv_name,       # ← most common (BioGears default)
+                self.working_dir / "Scenarios" / csv_name,
                 self.working_dir / csv_name,
                 self.working_dir / "results" / csv_name,
                 self.working_dir / "Scenarios" / "Scenarios" / csv_name,
@@ -213,7 +209,6 @@ class BioGearsScenarioRunner:
                     logger.debug(f"Found CSV at: {path}")
                     return path
 
-        # Fallback: any *Results.csv written after this run started
         for p in self.working_dir.rglob("*Results.csv"):
             if p.stat().st_mtime >= launch_time:
                 logger.warning(f"Found CSV via filesystem scan (unexpected path): {p}")
@@ -227,19 +222,12 @@ class BioGearsScenarioRunner:
         """
         Build a BioGears Scenario XML file from the stressor definition.
 
-        Namespace strategy:
-          - XSD ABSENT (after rename to .bak): use bare <Scenario> root.
-            bg-cli skips validation and runs fine with no namespace.
-          - XSD PRESENT: we still use bare <Scenario> root, but the validation
-            will fail. The fix is to rename the XSD (see __init__ warning).
-
         Returns:
             (xml_path, scenario_name)
         """
         unique_id     = uuid.uuid4().hex[:12]
         scenario_name = f"AstronautTwin_{s.stressor_type}_{unique_id}"
 
-        # Write the XML into working_dir (bin/) so bg-cli can find it
         xml_path = self.working_dir / f"scenario_{unique_id}.xml"
 
         actions   = self._build_actions(s)
@@ -250,16 +238,12 @@ class BioGearsScenarioRunner:
 
         samples_per_sec = 0.05  # 1 sample per 20s
 
-        # Use the full namespace + contentVersion format.
-        # This matches the format BioGears expects when XSDs are present.
-        # xmlns:xsi is declared once on the root so child elements inherit it.
-        # xsi:schemaLocation="" tells the validator not to look for an external schema URL.
         xml = f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Scenario xmlns="uri:/mil/tatrc/physiology/datamodel"
           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
           contentVersion="BioGears_6.3.0-beta"
           xsi:schemaLocation="">
-  <Name>{scenario_name}</Name>
+  <n>{scenario_name}</n>
   <Description>Stressor: {s.stressor_type} | Duration: {s.duration_minutes:.1f}min | Severity: {s.nausea_severity:.2f}</Description>
   <EngineStateFile>states/StandardMale@0s.xml</EngineStateFile>
   <DataRequests SamplesPerSecond="{samples_per_sec:.2f}">
@@ -275,15 +259,36 @@ class BioGearsScenarioRunner:
         return xml_path, scenario_name
 
     def _build_actions(self, s: BioGearsStressor) -> str:
+        """
+        Build the <Actions> block for each stressor type.
+
+        motion_sickness  → AcuteStressData
+            Models the vestibulo-autonomic response: HR elevation, BP rise,
+            nausea-driven sympathetic activation. Severity = nausea_severity [0-1].
+
+        stress (EVA/exercise) → ExerciseData > GenericExercise > Intensity
+            Models actual metabolic workload: VO2 rise, cardiac output increase,
+            core temperature elevation, respiratory rate increase.
+            Intensity = exercise_intensity [0-1].
+            Terminated with Intensity=0.0 to allow BioGears recovery phase.
+
+        sleep_deprivation → SleepData On → advance → SleepData Off
+                            + PatientAssessmentRequestData PsychomotorVigilanceTask
+            Puts patient into BioGears sleep state for the disrupted sleep window.
+            The PVT assessment at wake-up gives neurocognitive impairment output
+            directly tied to NASA's standard ISS sleep deprivation metric.
+        """
         actions = []
 
+        # 30-second stabilisation before any stressor
         actions.append(self._advance_time_xml(seconds=30.0))
 
-        if s.stressor_type in ("motion_sickness", "stress"):
-            raw      = s.nausea_severity if s.stressor_type == "motion_sickness" else s.exercise_intensity
-            severity = round(max(0.0, min(1.0, raw)), 3)
+        # ── MOTION SICKNESS ─────────────────────────────────────────────
+        if s.stressor_type == "motion_sickness":
+            severity = round(max(0.0, min(1.0, s.nausea_severity)), 3)
 
             if severity > 0:
+                # Apply AcuteStressData — fight-or-flight / vestibulo-autonomic
                 actions.append(
                     f'<Action xsi:type="AcuteStressData">\n'
                     f'      <Severity value="{severity}"/>\n'
@@ -291,17 +296,72 @@ class BioGearsScenarioRunner:
                 )
                 sim_minutes = min(s.duration_minutes, 10.0)
                 actions.append(self._advance_time_xml(minutes=sim_minutes))
+                # Remove stressor — lets BioGears model the recovery curve
                 actions.append(
                     '<Action xsi:type="AcuteStressData">\n'
                     '      <Severity value="0.0"/>\n'
                     '    </Action>'
                 )
+                # 60s recovery observation window
                 actions.append(self._advance_time_xml(seconds=60.0))
             else:
                 actions.append(self._advance_time_xml(minutes=min(s.duration_minutes, 10.0)))
 
+        # ── EVA / EXERCISE STRESS ────────────────────────────────────────
+        elif s.stressor_type == "stress":
+            intensity = round(max(0.0, min(1.0, s.exercise_intensity)), 3)
+
+            if intensity > 0:
+                # ExerciseData > GenericExercise: models actual metabolic workload.
+                # This is the correct action for EVA — not AcuteStressData.
+                # BioGears will raise VO2, cardiac output, core temp, RR, tidal volume.
+                actions.append(
+                    f'<Action xsi:type="ExerciseData">\n'
+                    f'      <GenericExercise>\n'
+                    f'        <Intensity value="{intensity}"/>\n'
+                    f'      </GenericExercise>\n'
+                    f'    </Action>'
+                )
+                sim_minutes = min(s.duration_minutes, 10.0)
+                actions.append(self._advance_time_xml(minutes=sim_minutes))
+                # Terminate exercise — BioGears models the post-exercise recovery curve
+                actions.append(
+                    '<Action xsi:type="ExerciseData">\n'
+                    '      <GenericExercise>\n'
+                    '        <Intensity value="0.0"/>\n'
+                    '      </GenericExercise>\n'
+                    '    </Action>'
+                )
+                # 90s post-exercise recovery observation
+                actions.append(self._advance_time_xml(seconds=90.0))
+            else:
+                actions.append(self._advance_time_xml(minutes=min(s.duration_minutes, 10.0)))
+
+        # ── SLEEP DISRUPTION ─────────────────────────────────────────────
         elif s.stressor_type == "sleep_deprivation":
-            actions.append(self._advance_time_xml(minutes=min(s.duration_minutes, 10.0)))
+            sleep_minutes = min(s.duration_minutes, 10.0)
+
+            # Put patient into BioGears sleep state
+            actions.append(
+                '<Action xsi:type="SleepData" Sleep="On"/>'
+            )
+            # Advance through the disrupted sleep window
+            actions.append(self._advance_time_xml(minutes=sleep_minutes))
+            # Wake the patient
+            actions.append(
+                '<Action xsi:type="SleepData" Sleep="Off"/>'
+            )
+            # 60s post-wake stabilisation
+            actions.append(self._advance_time_xml(seconds=60.0))
+            # Psychomotor Vigilance Task — NASA's standard ISS cognitive metric.
+            # Measures neurocognitive impairment from sleep deprivation.
+            # BioGears records the assessment result in the output CSV.
+            actions.append(
+                '<Action xsi:type="PatientAssessmentRequestData" Type="PsychomotorVigilanceTask"/>'
+            )
+            # Brief advance to let BioGears write the assessment result
+            actions.append(self._advance_time_xml(seconds=10.0))
+
         else:
             actions.append(self._advance_time_xml(minutes=min(s.duration_minutes, 10.0)))
 
@@ -325,23 +385,63 @@ class BioGearsScenarioRunner:
     # ── MOCK MODE ───────────────────────────
 
     def _mock_run(self, stressor: BioGearsStressor) -> str:
-        """Generate a synthetic CSV when bg-cli is unavailable."""
+        """
+        Generate a synthetic CSV when bg-cli is unavailable.
+
+        Each stressor type uses a physiologically distinct profile:
+          motion_sickness  → Gaussian spike (fast onset, gradual recovery)
+          stress/exercise  → Trapezoid ramp (sustained plateau during effort, recovery)
+          sleep_deprivation→ Flat suppressed baseline (low HR, low RR during sleep)
+        """
         import numpy as np
         import csv
 
         n = max(2, int(stressor.duration_minutes * 60 / stressor.output_frequency_seconds))
         t = np.linspace(0, stressor.duration_minutes * 60, n)
 
-        peak_t         = t[n // 3]
-        sigma          = t[-1] * 0.2 if t[-1] > 0 else 1.0
-        stress_profile = stressor.nausea_severity * np.exp(
-            -((t - peak_t) ** 2) / (2 * sigma ** 2)
-        )
+        if stressor.stressor_type == "motion_sickness":
+            # Gaussian spike peaking at t/3, decaying over the rest
+            peak_t  = t[n // 3]
+            sigma   = t[-1] * 0.2 if t[-1] > 0 else 1.0
+            profile = stressor.nausea_severity * np.exp(
+                -((t - peak_t) ** 2) / (2 * sigma ** 2)
+            )
+            hr   = 75  + 25 * profile + np.random.normal(0, 1.5, n)
+            map_ = 93  + 15 * profile + np.random.normal(0, 2.0, n)
+            spo2 = np.clip(0.98 - 0.02 * profile + np.random.normal(0, 0.001, n), 0.90, 1.0)
+            rr   = 15  +  5 * profile + np.random.normal(0, 0.5, n)
+            tv   = 500 + 50 * profile
+            temp = 37.0 + 0.2 * profile
 
-        hr   = 75  + 25 * stress_profile + np.random.normal(0, 1.5, n)
-        map_ = 93  + 15 * stress_profile + np.random.normal(0, 2.0, n)
-        spo2 = np.clip(0.98 - 0.02 * stress_profile + np.random.normal(0, 0.001, n), 0.90, 1.0)
-        rr   = 15  +  5 * stress_profile + np.random.normal(0, 0.5,  n)
+        elif stressor.stressor_type == "stress":
+            # Trapezoid: ramp up over first 20%, plateau, ramp down over last 20%
+            ramp_n   = max(1, n // 5)
+            ramp_up  = np.linspace(0, 1, ramp_n)
+            plateau  = np.ones(max(0, n - 2 * ramp_n))
+            ramp_dn  = np.linspace(1, 0, ramp_n)
+            profile  = np.clip(
+                np.concatenate([ramp_up, plateau, ramp_dn])[:n],
+                0, 1
+            ) * stressor.exercise_intensity
+            # Exercise drives HR much higher than stress; core temp rises steadily
+            hr   = 75  + 60 * profile + np.random.normal(0, 2.0, n)
+            map_ = 93  + 20 * profile + np.random.normal(0, 2.0, n)
+            spo2 = np.clip(0.98 - 0.01 * profile + np.random.normal(0, 0.001, n), 0.93, 1.0)
+            rr   = 15  + 20 * profile + np.random.normal(0, 1.0, n)
+            # Tidal volume increases markedly during exercise
+            tv   = 500 + 700 * profile + np.random.normal(0, 20, n)
+            # Core temperature rises gradually and stays elevated post-exercise
+            temp = 37.0 + 1.5 * profile + np.random.normal(0, 0.05, n)
+
+        else:
+            # sleep_deprivation: suppressed physiology — lower HR, lower RR
+            profile = np.zeros(n)
+            hr   = 58  + np.random.normal(0, 1.0, n)   # resting HR during sleep
+            map_ = 80  + np.random.normal(0, 1.5, n)   # lower MAP during sleep
+            spo2 = np.clip(0.97 + np.random.normal(0, 0.002, n), 0.94, 1.0)
+            rr   = 12  + np.random.normal(0, 0.5, n)   # slow breathing during sleep
+            tv   = 450 + np.random.normal(0, 15, n)
+            temp = 36.7 + np.random.normal(0, 0.05, n)
 
         unique_id = uuid.uuid4().hex[:8]
         csv_path  = self.working_dir / f"mock_{stressor.stressor_type}_{unique_id}_results.csv"
@@ -363,9 +463,9 @@ class BioGearsScenarioRunner:
                     round(float(map_[i]) - 20 + float(np.random.normal(0, 1)), 2),
                     round(float(spo2[i]), 4),
                     round(float(rr[i]),   2),
-                    round(500 + 50 * float(stress_profile[i]), 2),
-                    round(37.0 + 0.3 * float(stress_profile[i]), 3),
+                    round(float(tv[i]),   2),
+                    round(float(temp[i]), 3),
                 ])
 
-        logger.info(f"Mock CSV generated: {csv_path} ({n} rows)")
+        logger.info(f"Mock CSV generated: {csv_path} ({n} rows, type={stressor.stressor_type})")
         return str(csv_path)

@@ -7,38 +7,28 @@ Models the physiological response to spacewalk exertion or intense
 in-habitat exercise. Triggered stochastically (like motion sickness)
 with probability scaling from mission elapsed time and fatigue level.
 
-BioGears stressor: "stress" with exercise_intensity — already supported
-by the adapter and scenario_runner.
+BioGears action (v1.3):
+    ExerciseData > GenericExercise > Intensity
+    This is the correct action for metabolic workload — NOT AcuteStressData.
+    BioGears models VO2 consumption, cardiac output increase, core temperature
+    rise, respiratory rate increase, and tidal volume increase. The scenario
+    terminates with Intensity=0.0 so BioGears captures the post-exercise
+    recovery curve, which is physiologically distinct from the exercise itself.
 
 Coupling:
-    High fatigue → amplified BioGears response (handled in adapter)
+    High fatigue → amplified BioGears output (handled in adapter._scale_to_twin_state)
     EVA raises HR acutely, depletes energy, accelerates fatigue accumulation
-    Poor sleep → higher EVA risk (higher intensity felt at same workload)
+    Poor sleep → higher EVA perceived intensity (same workload = harder cardiovascular cost)
 
 FIX (v1.2):
-    Two bugs corrected from the previous revision:
+    Two bugs corrected:
+    1. fatigue_acceleration now returned as "fatigue_forcing" for ODE injection.
+    2. stress_delta returned for main loop formula, not written directly to state.
 
-    1. fatigue_acceleration was written to state.fatigue[t] in apply_effect()
-       but PhysicsEngine.step() overwrites that slot every step because
-       FatigueModel._fatigue_state is self-contained.  The fix moves forcing
-       into the ODE: apply_effect() now returns the forcing rate via the dict
-       key "fatigue_forcing", which the simulation loop collects and passes to
-       engine.step(fatigue_forcing=…).  apply_effect() no longer writes
-       state.fatigue at all.
-
-    2. new_stress computed in apply_effect() was immediately overwritten by the
-       post-scheduler stress formula in the main loop:
-           total_stress = clip(0.12 + circadian + fat_term + ms_term, …)
-           state.update(t, stress=total_stress)
-       The fix: apply_effect() no longer writes state.stress either.  Instead
-       it returns "stress_delta" in the effect dict so that the main loop can
-       incorporate it into the formula:
-           eva_stress_bonus = sum of stress_delta from active EVA events
-           total_stress = clip(0.12 + circadian + fat_term + ms_term + eva_bonus, …)
-       See api/routes/simulation.py for the updated loop.
-
-    HR write from apply_effect() is retained — no formula overwrites it after
-    the scheduler runs, so it is safe to write directly.
+FIX (v1.3):
+    get_biogears_perturbation() now returns type="stress" with exercise_intensity,
+    which routes to ExerciseData in scenario_runner._build_actions().
+    Previously it returned nausea_severity which routed to AcuteStressData — wrong.
 """
 
 import numpy as np
@@ -108,20 +98,16 @@ class ExerciseStressEvent(Event):
 
     Onset: stochastic Poisson process, rate scaled by fatigue.
     Severity: exercise intensity sampled from Beta distribution.
-    BioGears: fires "stress" perturbation so BioGears models the
-              full cardiovascular response to exertion.
+    BioGears: fires ExerciseData > GenericExercise > Intensity so BioGears
+              models actual metabolic workload (not a generic stress response).
 
     apply_effect() contract (v1.2):
     --------------------------------
     Returns a dict containing:
       "fatigue_forcing"  — rate (fatigue-units/h) to be passed into
                            PhysicsEngine.step(fatigue_forcing=…).
-                           The simulation loop is responsible for summing
-                           contributions from all active EVA events each step.
-      "stress_delta"     — additive stress increment to be folded into the
-                           main-loop stress formula (not written to state here).
-      "hr_applied"       — value written directly to state.hr[t] (safe: nothing
-                           overwrites HR after the scheduler runs).
+      "stress_delta"     — additive stress increment for the main-loop formula.
+      "hr_applied"       — value written directly to state.hr[t].
     """
 
     def __init__(
@@ -147,12 +133,6 @@ class ExerciseStressEvent(Event):
     ) -> Tuple[bool, Optional[float]]:
         """
         Decide if an EVA / exercise stress episode begins this timestep.
-
-        Args:
-            state           : AstronautState
-            t               : Current time index
-            dt_hours        : Step duration [hours] — forwarded by check_triggers
-            last_event_time : Simulation-time (hours) of the previous EVA onset
         """
         mission_time_h = t * (getattr(state, "dt", 30.0) / 60.0)
 
@@ -215,8 +195,8 @@ class ExerciseStressEvent(Event):
         return EventEffect(
             immediate={
                 "hr_delta":             hr_delta,
-                "stress_delta":         stress_delta,       # rate, used by stress formula
-                "fatigue_acceleration": fatigue_accel,      # rate, forwarded to ODE
+                "stress_delta":         stress_delta,
+                "fatigue_acceleration": fatigue_accel,
             },
             duration_hours=float(self.duration or 0.0),
         )
@@ -225,31 +205,9 @@ class ExerciseStressEvent(Event):
         """
         Apply ongoing EVA effects for one timestep.
 
-        IMPORTANT — what this method writes and what it does NOT write:
-
-        ✅ WRITES state.hr[t]
-           Nothing in the main loop overwrites HR after the scheduler, so
-           writing it directly is safe and correct.
-
-        ❌ does NOT write state.fatigue[t]
-           Fatigue is owned by PhysicsEngine._fatigue_state.  Writing to
-           state.fatigue[t] here would be overwritten by the very next
-           engine.step() call.  Instead, the forcing rate is returned as
-           "fatigue_forcing" (fatigue-units/hour) and the simulation loop
-           passes it to engine.step(fatigue_forcing=…).
-
-        ❌ does NOT write state.stress[t]
-           The main loop computes total_stress from a formula and calls
-           state.update(t, stress=total_stress) after the scheduler returns,
-           which would silently overwrite any write made here.  Instead,
-           "stress_delta" is returned so the loop can add it into the formula.
-
-        Returns:
-            dict with keys:
-                "fatigue_forcing"  — rate to pass to PhysicsEngine.step()
-                "stress_delta"     — additive increment for the stress formula
-                "hr_applied"       — new HR value written to state
-                "type", "severity" — bookkeeping
+        ✅ WRITES state.hr[t]  — safe, nothing overwrites HR after the scheduler.
+        ❌ does NOT write state.fatigue[t] — returns "fatigue_forcing" for ODE.
+        ❌ does NOT write state.stress[t]  — returns "stress_delta" for formula.
         """
         if getattr(self, "severity", None) is None:
             return {}
@@ -261,23 +219,28 @@ class ExerciseStressEvent(Event):
         stress_delta  = float(immediate.get("stress_delta", 0.0))
         fatigue_accel = float(immediate.get("fatigue_acceleration", 0.0))
 
-        # HR: safe to write directly
         new_hr = float(np.clip(state.hr[t] + hr_delta, 40, 200))
         state.update(t, hr=new_hr)
 
-        # Fatigue forcing and stress delta — returned to caller, NOT written here
         return {
             "type":            "exercise_stress_effect",
             "severity":        float(self.severity),
             "hr_applied":      new_hr,
-            "fatigue_forcing": fatigue_accel,   # caller passes to engine.step()
-            "stress_delta":    stress_delta,    # caller adds to stress formula
+            "fatigue_forcing": fatigue_accel,
+            "stress_delta":    stress_delta,
         }
 
     def get_biogears_perturbation(self) -> Dict[str, Any]:
-        """Return perturbation dict for BioGears adapter."""
+        """
+        Return perturbation dict for BioGears adapter.
+
+        FIX (v1.3): type is now "stress" (not "exercise_stress") and the
+        intensity is passed as exercise_intensity. This routes to
+        ExerciseData > GenericExercise in scenario_runner._build_actions(),
+        replacing the previous incorrect AcuteStressData routing.
+        """
         return {
             "type":               "stress",
-            "exercise_intensity": self.last_intensity,
+            "exercise_intensity": self.last_intensity,   # → ExerciseData Intensity
             "duration_minutes":   (self.duration or 1.0) * 60.0,
         }
