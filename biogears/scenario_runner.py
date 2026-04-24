@@ -243,7 +243,7 @@ class BioGearsScenarioRunner:
           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
           contentVersion="BioGears_6.3.0-beta"
           xsi:schemaLocation="">
-  <n>{scenario_name}</n>
+  <Name>{scenario_name}</Name>
   <Description>Stressor: {s.stressor_type} | Duration: {s.duration_minutes:.1f}min | Severity: {s.nausea_severity:.2f}</Description>
   <EngineStateFile>states/StandardMale@0s.xml</EngineStateFile>
   <DataRequests SamplesPerSecond="{samples_per_sec:.2f}">

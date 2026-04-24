@@ -501,6 +501,29 @@ async def execute_simulation(
                 config={"disabled_event_types": _disabled_events}
             )
 
+            # ── Force one sleep disruption at mission start ────────────
+            if config.enable_sleep_disruption:
+                forced_sleep = SleepDisruptionEvent()
+                forced_sleep.initialize_event(
+                    onset_time=0.0,
+                    onset_index=0,
+                    severity=0.6,
+                )
+                scheduler.active_events[forced_sleep.event_id] = forced_sleep
+                scheduler.last_event_times["sleep_disruption"] = config.mission_duration_hours + 999
+                logger.info(f"Astronaut {astro_idx}: forced sleep disruption injected at t=0")
+
+                # ── Fire BioGears for the forced sleep disruption ──────
+                if config.use_biogears and biogears:
+                    perturbation = {
+                        "type": "sleep_deprivation",
+                        "duration_minutes": forced_sleep.duration * 60,
+                        "baseline_hr": config.baseline_hr + hr_offset,
+                        "fatigue_level": config.initial_fatigue,
+                    }
+                    bio_response = await biogears.run_perturbation_async(perturbation)
+                    logger.info(f"Astronaut {astro_idx}: forced sleep disruption BioGears call complete")
+
             # ── Extra arrays for novel ODE states ─────────────────────
             S_arr = np.zeros(timesteps, dtype=np.float32)
             C_arr = np.zeros(timesteps, dtype=np.float32)
