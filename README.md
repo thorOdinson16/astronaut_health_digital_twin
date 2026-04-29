@@ -38,10 +38,15 @@ Existing tools model these systems independently. This project implements, for t
 - Sleep-pressure-gated vestibular adaptation rate — the novel coupling mechanism
 - Counterfactual analysis quantifying synergistic excess risk from the coupling
 - Monte Carlo simulation across inter-individual physiological variability distributions
+- Multi-astronaut simulation support (up to 5 crew members per run)
 - BioGears integration for high-fidelity cardiovascular responses during discrete events
+- Chronic-stress BioGears trigger at fatigue threshold ≥ 6.0 (Samn-Perelli scale)
+- Selective event enablement — motion sickness, sleep disruption, and EVA/exercise toggleable independently
 - EVA/exercise stress event modelling with metabolic workload simulation
+- Sensitivity analysis endpoint for heart rate and sleep quality profiling
 - Real-time 3D dashboard with Interstellar-themed visualisation
-- Groq LLM and Anthropic Claude integration for natural-language risk explanation
+- Run comparison panel for side-by-side analysis of multiple simulation runs
+- Groq LLM (Llama 3.3 70B) and Anthropic Claude integration for natural-language risk explanation
 - In-browser PDF report generation with flight surgeon signature block
 
 ---
@@ -101,7 +106,7 @@ The system uses a three-layer architecture with strict separation between the ph
 ┌─────────────────────────────────────────▼──────────────────┐
 │                      PHYSICS CORE                           │
 │  BorbelyModel · VestibularMismatchModel · FatigueModel     │
-│                    PhysicsEngine                            │
+│              PhysicsEngine · CouplingEngine                 │
 └──────────────────────────────┬─────────────────────────────┘
                                │ on discrete events only
 ┌──────────────────────────────▼──────────────────────────────┐
@@ -112,11 +117,11 @@ The system uses a three-layer architecture with strict separation between the ph
 
 ### Layer Responsibilities
 
-**Physics Core** (`core/`) — The mathematical heart of the system. Three classes — `BorbelyModel`, `VestibularMismatchModel`, `FatigueModel` — are composed by `PhysicsEngine`, which is called once per 30-minute timestep. The calling sequence enforces data dependencies: Borbely first (produces S_norm and sleep quality), then Vestibular (consumes S_norm), then Fatigue (consumes both).
+**Physics Core** (`core/`) — The mathematical heart of the system. Three classes — `BorbelyModel`, `VestibularMismatchModel`, `FatigueModel` — are composed by `PhysicsEngine`, which is called once per timestep. The calling sequence enforces data dependencies: Borbely first (produces `S_norm` and sleep quality), then Vestibular (consumes `S_norm`), then Fatigue (consumes both). `CouplingEngine` runs in parallel, accumulating per-step diagnostics — k-suppression, joint-risk windows, and the coupling probability traces that feed `CouplingDiagnostics`.
 
-**Simulation and Events Layer** (`events/`) — Manages the discrete stochastic events that punctuate the continuous ODE simulation. `EventScheduler` maintains a priority queue of pending events and applies active event effects at each timestep. The three event types each implement `sample_onset()`, `get_duration()`, `apply_effect()`, and `get_biogears_perturbation()`.
+**Simulation and Events Layer** (`events/`) — Manages the discrete stochastic events that punctuate the continuous ODE simulation. `EventScheduler` maintains a priority queue of pending events and applies active event effects at each timestep. The three event types each implement `sample_onset()`, `get_duration()`, `apply_effect()`, and `get_biogears_perturbation()`. Event types are independently toggleable at simulation launch via `SimulationConfig.enable_*` flags, which are wired directly to the scheduler's disabled-event list.
 
-**Analytics and API Layer** (`analytics/`, `api/`) — Sits above the simulation and provides outputs for consumption. Risk engine computes threshold-crossing metrics; the Monte Carlo engine runs N parallel trajectories with sampled biological variability; `CouplingDiagnostics` performs the counterfactual analysis that is the paper's primary result.
+**Analytics and API Layer** (`analytics/`, `api/`) — Sits above the simulation and provides outputs for consumption. The risk engine computes threshold-crossing metrics; the Monte Carlo engine runs N parallel trajectories with sampled biological variability; `CouplingDiagnostics` performs the counterfactual analysis that is the paper's primary result. A `sensitivity` endpoint allows exploration of heart rate and sleep quality profiles across physiological parameter ranges.
 
 ---
 
@@ -124,7 +129,7 @@ The system uses a three-layer architecture with strict separation between the ph
 
 ### Borbely Two-Process Sleep Model
 
-Implemented in `core/fatigue_model.py` as `BorbelyModel`. Euler integration at 30-minute timesteps.
+Implemented in `core/fatigue_model.py` as `BorbelyModel`. Euler integration at configurable timesteps (default 5 minutes for main simulation; 30 minutes for Monte Carlo).
 
 **Process S — Homeostatic Sleep Pressure**
 
@@ -158,7 +163,7 @@ The ISS creates 16 light-dark cycles per day. This is modelled as a Wiener proce
 
 **Sleep Gates and Sleep Quality**
 
-Sleep onset occurs when S rises above the upper circadian gate and the astronaut is inside the nominal sleep window (22:00–06:00 mission time). Sleep quality is derived geometrically from how well S sits between the upper and lower gates — fully centred produces quality 1.0; near either gate boundary degrades toward 0.1. This mechanistic derivation correctly captures the relationship between circadian phase alignment and sleep quality.
+Sleep onset occurs when S rises above the upper circadian gate and the astronaut is inside the nominal sleep window (22:00–06:00 mission time). Sleep quality is derived geometrically from how well S sits between the upper and lower gates — fully centred produces quality 1.0; near either gate boundary degrades toward 0.1.
 
 ---
 
@@ -188,7 +193,7 @@ k_adapt(S_norm) = k₀ · (1 - w_s · S_norm)
 | Parameter | Value | Source |
 |-----------|-------|--------|
 | `k_adapt_0` (k₀) | 0.18 h⁻¹ | Calibrated to 67% first-72h incidence (Heer & Paloski 2006) |
-| `w_s` | 0.60 | Model parameter — see limitations |
+| `w_s` | 0.60 (Uniform[0.55, 0.75] in Monte Carlo) | Model parameter — see limitations |
 
 At maximum sleep deprivation (S_norm = 1.0), the effective adaptation rate drops to `k₀ × (1 - 0.60) = 0.072 h⁻¹` — less than half the rested baseline. Adaptation that would take ~6 hours rested takes ~14 hours sleep-deprived.
 
@@ -207,7 +212,7 @@ P(onset per hour) = σ · ∫|m|dt / (ξ + ∫|m|dt)
 
 **Vestibulo-Cardiac Reflex**
 
-HR contribution from mismatch: `hr_delta = hr_gain × |m(t)|`, with `hr_gain = 8.0 bpm per unit mismatch`.
+HR contribution from mismatch: `hr_delta = hr_gain × |m(t)|`, applied at 10% weighting to the state HR each step, with `hr_gain = 8.0 bpm per unit mismatch`.
 
 ---
 
@@ -229,30 +234,50 @@ dF/dt = α · sleep_debt^1.2  +  β · |m(t)|^1.5  -  γ(C) · sleep_quality  + 
 | Circadian boost | `gamma_circadian_boost` | 0.10 h⁻¹ | Extra recovery at circadian nadir |
 | Noise | ε ~ Gamma(0.5, 0.03) | — | Biological variability |
 
-The superlinear exponents (1.2 on sleep debt, 1.5 on mismatch) encode the dose-response non-linearity observed in sleep deprivation studies. Recovery is circadian-gated — it is most efficient when the circadian oscillator C(t) is at its trough, reflecting the empirical finding that sleep taken at the wrong circadian phase is substantially less restorative.
+The superlinear exponents (1.2 on sleep debt, 1.5 on mismatch) encode the dose-response non-linearity observed in sleep deprivation studies. Recovery is circadian-gated — it is most efficient when the circadian oscillator C(t) is at its trough.
 
 External event forcing (from active `ExerciseStressEvent`s) is injected into the ODE via the `fatigue_forcing` parameter at the `PhysicsEngine` level so the ODE state variable F remains authoritative across timesteps.
 
+**Stress Formula**
+
+The scalar stress state at each timestep is computed as:
+
+```
+stress(t) = 0.12 + circadian_stress(t) + min(0.45, F/10 × 0.60) + Σ event_stress_delta
+```
+
+where `circadian_stress` follows a sinusoidal profile and `event_stress_delta` aggregates contributions from all concurrently active events (motion sickness and exercise stress). This replaces the earlier EVA-only stress collection, ensuring that `MotionSicknessEvent` stress contributions are not silently overwritten.
+
 ---
 
-### Counterfactual Analysis
+### Coupling Engine
 
-Implemented in `core/coupling_engine.py` as `CouplingDiagnostics`.
+Implemented in `core/coupling_engine.py` as `CouplingEngine` (per-step) and `CouplingDiagnostics` (post-hoc counterfactual).
+
+`CouplingEngine.update()` is called once per timestep immediately after `PhysicsEngine.step()`. It accumulates:
+
+- `k_suppress` — fractional suppression of adaptation capacity at this step
+- joint high-risk window tracking (fatigue AND high SMS probability simultaneously)
+- per-step coupling probability traces (coupled, independent estimate, excess)
+
+**Counterfactual Analysis**
 
 The counterfactual question: *if vestibular adaptation had always run at the rested baseline rate k₀ (i.e., if sleep deprivation had no effect on adaptation), how much lower would the motion sickness risk have been?*
 
-The system computes both the actual (coupled) cumulative mismatch trajectory and an estimated counterfactual trajectory — scaled by the ratio `k_actual / k₀` at each step — then applies the Michaelis-Menten formula to both to get `P_coupled(t)` and `P_independent(t)`. The difference is the excess risk attributable to the coupling.
+`CouplingDiagnostics.analyse()` computes both the actual (coupled) cumulative mismatch trajectory and an estimated counterfactual trajectory — scaled by the ratio `k_actual / k₀` at each step — then applies the Michaelis-Menten formula to both to get `P_coupled(t)` and `P_independent(t)`. The difference is the excess risk attributable to the coupling.
 
 | Metric | Description |
 |--------|-------------|
 | `mean_excess_p_ms` | Average additional motion sickness probability per step from coupling |
 | `peak_excess_p_ms` | Maximum point-in-time excess risk |
 | `relative_excess_pct` | Excess as percentage of independent baseline |
-| `joint_risk_excess_fraction` | Additional fraction of mission time in joint high-risk state (fatigue AND high SMS probability simultaneously) |
+| `joint_risk_excess_fraction` | Additional fraction of mission time in joint high-risk state |
 | `mean_k_suppress` | Average fractional suppression of adaptation rate across mission |
 | `time_high_coupling_frac` | Fraction of mission where coupling suppresses >40% of adaptation capacity |
 
-**Note on current limitation**: The counterfactual currently uses a post-hoc scalar approximation rather than running a second parallel independent simulation. This systematically underestimates the independent baseline and inflates the apparent excess risk. A proper implementation would run a second trajectory with k_adapt held constant at k₀ throughout. See [Known Limitations](#known-limitations).
+Coupling diagnostics are attached to the risk report under `risk_report.coupling_diagnostics` and are available via the `/api/data/{run_id}/risk_report` endpoint.
+
+> **Note**: The counterfactual currently uses a post-hoc scalar approximation rather than running a second parallel independent simulation. This systematically underestimates the independent baseline. See [Known Limitations](#known-limitations).
 
 ---
 
@@ -260,7 +285,7 @@ The system computes both the actual (coupled) cumulative mismatch trajectory and
 
 Implemented in `analytics/monte_carlo.py`.
 
-A single simulation produces one possible trajectory for one hypothetical astronaut. Monte Carlo simulation runs N independent trajectories with biological parameters sampled from inter-individual variability distributions, producing a distribution of possible mission outcomes rather than a single point estimate.
+A single simulation produces one possible trajectory for one hypothetical astronaut. Monte Carlo simulation runs N independent trajectories with biological parameters sampled from inter-individual variability distributions, producing a distribution of possible mission outcomes rather than a single point estimate. The Monte Carlo endpoint operates at 30-minute timesteps for computational efficiency; N=50 completes in approximately 1–3 seconds.
 
 ### Inter-Individual Variability Distributions
 
@@ -274,6 +299,8 @@ A single simulation produces one possible trajectory for one hypothetical astron
 | `gamma` | Nominal × Uniform(0.80, 1.25) | — | Individual sleep recovery efficiency |
 
 `tau_wake`, `tau_sleep`, and `k_adapt_0` use Normal distributions because they are measurable physiological quantities with known population means and symmetric individual variation. `w_s` uses Uniform because it is not empirically measured — the bounds reflect biological reasoning, but no single paper provides a central estimate. `alpha` and `gamma` are scaled multiplicatively to preserve proportional variation regardless of the nominal baseline.
+
+The same per-astronaut variability distributions are used in the main simulation when `num_astronauts > 1`, with each crew member seeded by a deterministic RNG derived from their index.
 
 ### Outputs
 
@@ -293,7 +320,7 @@ Envelope time-series are produced for: fatigue, sleep quality, S (homeostatic pr
 
 ## BioGears Integration
 
-BioGears is not part of the main simulation loop. The ODE system runs continuously and generates the full physiological trajectory. BioGears is invoked **only on discrete stochastic events** to produce high-fidelity cardiovascular snapshots for that event window.
+BioGears is not part of the main simulation loop. The ODE system runs continuously and generates the full physiological trajectory. BioGears is invoked **only on discrete stochastic events** to produce high-fidelity cardiovascular snapshots for that event window, and on a **chronic-stress trigger** when fatigue first crosses 6.0 on the Samn-Perelli scale.
 
 ### Invocation Flow
 
@@ -315,6 +342,7 @@ The async wrapper runs BioGears in a thread pool executor to avoid blocking Fast
 | Motion Sickness | `AcuteStressData` | `Severity` = nausea_severity × fatigue_amplification |
 | EVA / Exercise | `ExerciseData > GenericExercise > Intensity` | `Intensity` = exercise_intensity (not amplified at input) |
 | Sleep Disruption | `SleepData On/Off` + `PatientAssessmentRequestData PsychomotorVigilanceTask` | Duration extended by fatigue |
+| Chronic Stress | `ExerciseData > GenericExercise > Intensity` | Fixed intensity = 0.3, triggered on first fatigue ≥ 6.0 crossing |
 
 ### Fatigue Amplification
 
@@ -328,6 +356,10 @@ amplification = 1.0 + 0.4 × fatigue_norm   # up to 1.40× at max fatigue
 For **motion sickness**: severity is multiplied by amplification; duration extended by `1 + 0.2 × fatigue_norm`.  
 For **exercise**: input intensity is unchanged (preserves BioGears scenario integrity); output HR is scaled by `1 + 0.25 × fatigue_norm` after parsing.  
 For **sleep disruption**: no severity change; duration extended by `1 + 0.15 × fatigue_norm`.
+
+### Scenario Structure
+
+Each scenario applies a 30-second stabilisation advance before the stressor. Motion sickness scenarios include a 60-second recovery observation window after stressor removal. Exercise scenarios apply a 90-second post-exercise recovery window. Sleep disruption scenarios include a 60-second post-wake stabilisation and a PVT assessment request. All scenarios cap simulated duration at 10 minutes regardless of the event duration drawn from the stochastic model.
 
 ### Signals Collected
 
@@ -365,7 +397,7 @@ Interactive documentation is available at `/docs` (Swagger UI) and `/redoc`.
 
 | Prefix | Description |
 |--------|-------------|
-| `/api/simulation` | Simulation lifecycle — start, poll status, retrieve results, run Monte Carlo |
+| `/api/simulation` | Simulation lifecycle — start, poll, stop, delete, list, results, Monte Carlo, sensitivity |
 | `/api/data` | Retrieve completed outputs — full trajectories, risk reports, trend analyses |
 | `/api/health` | Health checks, dependency verification, Kubernetes liveness/readiness probes |
 | `/api/config` | Serves Groq API key from server environment to frontend |
@@ -373,16 +405,46 @@ Interactive documentation is available at `/docs` (Swagger UI) and `/redoc`.
 ### Key Endpoints
 
 ```
-POST   /api/simulation/run          Start a new simulation, returns run_id immediately
-GET    /api/simulation/{run_id}/status  Poll simulation progress
-GET    /api/simulation/{run_id}/results Full trajectory data
-POST   /api/simulation/{run_id}/monte_carlo  Run Monte Carlo on completed simulation
-GET    /api/data/{run_id}/risk_report        Threshold analysis and at-risk windows
-GET    /api/data/{run_id}/trend_analysis     Linear trend detection on state variables
-POST   /api/simulation/ai/chat      Anthropic Claude proxy (CORS bypass)
-GET    /api/health/live             Kubernetes liveness probe
-GET    /api/health/ready            Kubernetes readiness probe
+POST   /api/simulation/run                        Start a new simulation, returns run_id immediately
+GET    /api/simulation/status/{run_id}            Poll simulation progress
+GET    /api/simulation/list                       Paginated list of all runs (filterable by status)
+POST   /api/simulation/stop/{run_id}              Stop a running simulation
+DELETE /api/simulation/delete/{run_id}            Delete a simulation run and its data
+GET    /api/simulation/config/{run_id}            Retrieve the config used for a run
+POST   /api/simulation/monte-carlo               Run Monte Carlo batch (synchronous, ~1-3 s for N=50)
+GET    /api/simulation/sensitivity/{variable}     Sensitivity profiles for heart_rate or sleep_quality
+GET    /api/data/{run_id}/results                 Full trajectory data
+GET    /api/data/{run_id}/risk_report             Threshold analysis, at-risk windows, coupling diagnostics
+GET    /api/data/{run_id}/trend_analysis          Linear trend detection on state variables
+POST   /api/simulation/ai/chat                    Groq AI proxy (CORS bypass, Llama 3.3 70B)
+GET    /api/health/                               Basic health check
+GET    /api/health/ping                           Ultra-lightweight ping for load balancers
+GET    /api/health/status                         Detailed system status with resource usage
+GET    /api/health/liveness                       Kubernetes liveness probe
+GET    /api/health/readiness                      Kubernetes readiness probe
+GET    /api/health/metrics                        Prometheus-style process metrics
+GET    /api/health/dependencies                   Dependency version inventory
 ```
+
+### SimulationConfig Schema
+
+Key fields accepted by `POST /api/simulation/run`:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `mission_duration_hours` | float | 720.0 | Simulation duration (1 h – 8760 h) |
+| `time_step_minutes` | float | 5.0 | ODE integration timestep (0.1 – 60 min) |
+| `astronaut_id` | string | "default" | Identifier for baseline profiles |
+| `baseline_hr` | float | 75.0 | Baseline heart rate (bpm) |
+| `baseline_sleep_quality` | float | 0.8 | Baseline sleep quality [0–1] |
+| `initial_fatigue` | float | 0.0 | Initial fatigue index [0–10] |
+| `num_astronauts` | int | 1 | Crew size to simulate (1–5) |
+| `enable_motion_sickness` | bool | true | Enable stochastic SMS events |
+| `enable_sleep_disruption` | bool | true | Enable sleep disruption events |
+| `enable_exercise_stress` | bool | true | Enable EVA/exercise stress events |
+| `use_biogears` | bool | true | Enable BioGears cardiovascular responses |
+| `save_trajectories` | bool | true | Persist full state time-series |
+| `save_events` | bool | true | Persist event logs |
 
 ### Middleware
 
@@ -403,8 +465,7 @@ A Jinja2 template-based web application with modular JavaScript.
 |-----------|-----------|
 | 3D visualisation | Three.js r160 (GLTF models: `Astronaut.glb`, `Endurance.glb`, `BlackHole.glb`) |
 | Charts | Chart.js 4.4 |
-| AI risk explanation | Groq API (Llama 3.3 70B) |
-| AI chat (alternative) | Anthropic Claude (proxied through `/api/simulation/ai/chat`) |
+| AI risk explanation | Groq API (Llama 3.3 70B, proxied through `/api/simulation/ai/chat`) |
 | PDF export | jsPDF (fully client-side, no server involvement) |
 | Audio | Hans Zimmer — *No Time For Caution* (`static/No Time For Caution.mp3`) |
 
@@ -417,12 +478,24 @@ A Jinja2 template-based web application with modular JavaScript.
 | `playback.js` | Post-simulation trajectory playback engine with pause/resume |
 | `charts.js` | Real-time and scrubbing chart management |
 | `montecarlo.js` | Monte Carlo results display and envelope charts |
-| `ai-chat.js` | Groq and Claude AI integration |
+| `ai-chat.js` | Groq AI integration for natural-language risk explanation |
 | `export.js` | PDF report generation |
-| `3d-viewer.js` | Three.js scene, model loading, physiological state → scene mapping |
+| `3d-viewer.js` | Three.js scene, model loading, physiological state → scene mapping, click-to-inspect raycaster |
 | `tour.js` | 6-step onboarding tour |
 | `debug-panel.js` | Developer positioning tool (Ctrl+Shift+D) |
 | `utils.js` | Shared utilities and constants |
+
+### 3D Viewer Features
+
+The Three.js scene renders the Endurance spacecraft with an interior habitat containing the astronaut model. Camera modes toggle between ship-exterior orbit (`ship`) and astronaut-interior view (`astro`). Risk state is reflected in scene lighting — red ambient shift and tremor effects activate at HIGH/CRITICAL fatigue. A click-to-inspect raycaster shows physiological readings for the head (stress), upper torso (heart rate, SpO₂), and lower body (fatigue, motion severity) regions of the astronaut mesh. Risk-level transitions trigger audio tones via the Web Audio API.
+
+### Template Partials
+
+Twelve HTML partials compose the dashboard layout:
+
+`api-bar` · `charts` · `controls` · `full-chart-modal` · `header` · `load-modal` · `mission-risk` · `montecarlo` · `run-comparison` · `status-panel` · `timeline` · `twin-panel`
+
+The `run-comparison` partial enables side-by-side display of multiple completed simulation runs for direct trajectory and risk metric comparison.
 
 ### PDF Report Contents
 
@@ -507,6 +580,8 @@ ANTHROPIC_API_KEY=your_anthropic_api_key_here
 BG_CLI_PATH=C:\Users\username\biogears\bin
 ```
 
+`GROQ_API_KEY` is served to the frontend at page load via `/api/config` and is used directly by the Groq chat proxy. `ANTHROPIC_API_KEY` is available for server-side Claude integrations. Neither key is embedded in the HTML source.
+
 ### `config/simulation_config.yaml`
 
 Default mission parameters and model parameter overrides. Loaded at startup and accessible through the simulation manager.
@@ -519,7 +594,7 @@ Statistical distributions for all probabilistic variables, each with explicit ac
 |----------|-------------|-----------|
 | Heart rate | Normal | μ=75 bpm, σ=5 bpm |
 | Sleep quality | Beta | α=5, β=2 (mean ≈ 0.71) |
-| Motion sickness onset | Poisson | λ=0.03 events/h |
+| Motion sickness onset | Poisson | λ=0.03 events/h (time-inhomogeneous, α=0.1/h decay) |
 | Motion sickness severity | Beta | α=2, β=3 (mean = 0.4) |
 | Motion sickness duration | Gamma | shape=2.5, scale=0.8 h |
 | Fatigue noise | Gamma | shape=2, scale=0.1 |
@@ -532,6 +607,8 @@ Statistical distributions for all probabilistic variables, each with explicit ac
 
 ```
 .
+├── __init__.py                   # Version: v1.1.0
+│
 ├── core/
 │   ├── fatigue_model.py          # BorbelyModel, VestibularMismatchModel, FatigueModel, PhysicsEngine
 │   ├── coupling_engine.py        # CouplingEngine (per-step diagnostics) + CouplingDiagnostics (counterfactual)
@@ -544,13 +621,14 @@ Statistical distributions for all probabilistic variables, each with explicit ac
 │   └── trend_analysis.py         # Linear trend detection on physiological variables
 │
 ├── events/
-│   ├── base_event.py             # Abstract Event base class
-│   ├── event_scheduler.py        # Priority queue event manager
+│   ├── base_event.py             # Abstract Event base class (EventPriority, EventStatus, EventEffect)
+│   ├── event_scheduler.py        # Priority queue event manager with disabled-event filtering
 │   ├── motion_sickness_event.py  # Stochastic SMS events from ODE p_ms_step probability
 │   ├── sleep_disruption_event.py # Sleep window disruption events
 │   └── exercise_stress_event.py  # EVA/exercise stress events (ExerciseData → BioGears)
 │
 ├── biogears/
+│   ├── __init__.py               # Package exports: BioGearsAdapter, ScenarioRunner, OutputParser
 │   ├── biogears_adapter.py       # High-level async bridge: digital twin ↔ BioGears
 │   ├── scenario_runner.py        # XML scenario builder + bg-cli subprocess wrapper + mock mode
 │   └── output_parser.py          # BioGears CSV parser, column normalisation, time-axis alignment
@@ -558,15 +636,27 @@ Statistical distributions for all probabilistic variables, each with explicit ac
 ├── api/
 │   ├── dependencies.py           # SimulationManager, ConfigLoader, FastAPI dependency injection
 │   └── routes/
-│       ├── simulation.py         # Simulation lifecycle + Monte Carlo + Anthropic proxy
+│       ├── simulation.py         # Lifecycle + Monte Carlo + sensitivity + Groq AI proxy
 │       ├── data.py               # Results and analytics retrieval
-│       ├── health.py             # Health checks and Kubernetes probes
+│       ├── health.py             # Health checks, Kubernetes probes, Prometheus metrics
 │       └── config.py             # API key serving endpoint
 │
 ├── templates/
 │   ├── base.html                 # Base layout with script loading
 │   ├── index.html                # Page assembly (includes all partials)
 │   └── partials/                 # 12 HTML partial components
+│       ├── api-bar.html
+│       ├── charts.html
+│       ├── controls.html
+│       ├── full-chart-modal.html
+│       ├── header.html
+│       ├── load-modal.html
+│       ├── mission-risk.html
+│       ├── montecarlo.html
+│       ├── run-comparison.html
+│       ├── status-panel.html
+│       ├── timeline.html
+│       └── twin-panel.html
 │
 ├── static/
 │   ├── js/                       # 11 JavaScript modules
@@ -615,11 +705,11 @@ Statistical distributions for all probabilistic variables, each with explicit ac
 
 ### Counterfactual Approximation
 
-The most significant scientific limitation. The current counterfactual analysis uses a post-hoc scalar approximation — scaling the actual cumulative mismatch by the `k_actual/k₀` ratio — rather than running an independent parallel simulation with k_adapt held constant at k₀. Because the mismatch dynamics are nonlinear and the approximation assumes linearity, this systematically underestimates the independent baseline, making the excess risk appear larger than the correct value. The correct implementation for journal submission requires a second parallel trajectory per Monte Carlo run, doubling computational cost but producing the scientifically defensible result.
+The most significant scientific limitation. The current counterfactual analysis uses a post-hoc scalar approximation — scaling the actual cumulative mismatch by the `k_actual/k₀` ratio — rather than running an independent parallel simulation with k_adapt held constant at k₀. Because the mismatch dynamics are nonlinear and the approximation assumes linearity, this systematically underestimates the independent baseline, making the excess risk appear larger than the correct value. A proper implementation for journal submission requires a second parallel trajectory per Monte Carlo run, doubling computational cost but producing the scientifically defensible result.
 
 ### Uncited Nonlinear Exponents
 
-The fatigue ODE uses superlinear exponents of 1.2 (sleep debt term) and 1.5 (vestibular mismatch term). These values are physiologically plausible and consistent with observed dose-response non-linearity, but are not directly cited to a specific paper. A sensitivity analysis demonstrating that key outputs are robust to variation in these exponents within a physiologically reasonable range is required.
+The fatigue ODE uses superlinear exponents of 1.2 (sleep debt term) and 1.5 (vestibular mismatch term). These values are physiologically plausible and consistent with observed dose-response non-linearity, but are not directly cited to a specific paper. A sensitivity analysis demonstrating that key outputs are robust to variation in these exponents within a physiologically reasonable range is required before submission.
 
 ### The `w_s` Parameter
 
@@ -632,5 +722,9 @@ The model currently reproduces known summary statistics from the literature (67%
 ### Patient Model
 
 BioGears runs all scenarios against a single `StandardMale.xml` patient. A female patient variant or a patient parameterised from individual astronaut anthropometrics and physiology would improve the physiological realism of BioGears-generated cardiovascular responses. The current approach relies entirely on the ODE layer for inter-individual variability.
+
+### Stress Formula Double-Counting Risk
+
+The stress computation aggregates contributions from all concurrently active events using a general collector (`_collect_event_stress_deltas`). An EVA safety net is included to avoid double-counting exercise stress if it was already captured via the effects list. However, in edge cases where multiple event types fire in the same timestep, the interaction between the safety net heuristic and the effects list may produce minor inaccuracies. A cleaner resolution would be to have each event type own its exclusive stress channel.
 
 ---
